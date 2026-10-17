@@ -109,5 +109,5 @@ public sealed class CoreTests
     }
 
     private static CacheTrimmer.Result Result(long before, long after, int evicted = 0) =>
-        new(before, after, evicted, 0, 1, 1, null, new long[5], new long[5], [], TimeSpan.Zero);
+        new(before, after, evicted, 0, 1, 1, null, new long[5], new long[5], [], TimeSpan.Zero, [], 0, []);
 }

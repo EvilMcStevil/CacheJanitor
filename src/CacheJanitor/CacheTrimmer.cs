@@ -42,12 +42,21 @@ public sealed class CacheTrimmer
         long[] AgeBytes,
         long[] AgeEntries,
         IReadOnlyList<EvictionRecord> Evictions,
-        TimeSpan Duration);
+        TimeSpan Duration,
+        IReadOnlyList<CreatedEntry> Created,
+        long UntouchedBytes,
+        IReadOnlyList<LruPoint> Profile);
 
-    private sealed record Entry(string FullPath, string RelativePath, bool IsDirectory, long Bytes, long Files, DateTime LastUsedUtc);
+    /// <summary>An entry (a file, or a top-level folder in <see cref="EvictionUnit.TopLevelEntry"/> mode) created at or after the requested time.</summary>
+    public sealed record CreatedEntry(string RelativePath, long Bytes, DateTime CreatedUtc);
+
+    /// <summary>A point on the cache's LRU profile: of the oldest Bytes bytes (by last use), RecentBytes were last used within 7 days.</summary>
+    public sealed record LruPoint(long Bytes, long RecentBytes);
+
+    private sealed record Entry(string FullPath, string RelativePath, bool IsDirectory, long Bytes, long Files, DateTime LastUsedUtc, DateTime CreatedUtc);
 
     /// <summary>Scans and trims on a thread-pool thread at background I/O priority.</summary>
-    public async Task<Result> TrimAsync(CancellationToken ct = default)
+    public async Task<Result> TrimAsync(CancellationToken ct = default, DateTime? createdSinceUtc = null)
     {
         await _gate.WaitAsync(ct);
         try
@@ -55,7 +64,7 @@ public sealed class CacheTrimmer
             return await Task.Run(() =>
             {
                 using var _ = BackgroundIo.Enter();
-                return Trim(ct);
+                return Trim(ct, createdSinceUtc);
             }, ct);
         }
         finally
@@ -64,7 +73,7 @@ public sealed class CacheTrimmer
         }
     }
 
-    private Result Trim(CancellationToken ct)
+    private Result Trim(CancellationToken ct, DateTime? createdSinceUtc)
     {
         var clock = Stopwatch.StartNew();
         var root = new DirectoryInfo(_options.Path);
@@ -150,7 +159,41 @@ public sealed class CacheTrimmer
             Files: entries.Sum(e => e.Files),
             Entries: entries.Count,
             OldestUsedUtc: entries.Count == 0 ? null : entries.Min(e => e.LastUsedUtc),
-            ageBytes, ageEntries, evictions, clock.Elapsed);
+            ageBytes, ageEntries, evictions, clock.Elapsed,
+            Created: createdSinceUtc is { } since ? CreatedSince(entries, since) : [],
+            UntouchedBytes: entries.Where(e => now - e.LastUsedUtc >= UntouchedAge).Sum(e => e.Bytes),
+            Profile: BuildProfile(entries, now));
+    }
+
+    // ---------- reporting ----------
+
+    private static readonly TimeSpan UntouchedAge = TimeSpan.FromDays(90);
+    private static readonly TimeSpan RecentAge = TimeSpan.FromDays(7);
+    private static readonly TimeSpan CreatedAllowance = TimeSpan.FromMinutes(1);
+    private const int MaxProfilePoints = 100;
+
+    private static List<CreatedEntry> CreatedSince(List<Entry> entries, DateTime sinceUtc) =>
+        entries.Where(e => e.CreatedUtc >= sinceUtc - CreatedAllowance)
+            .Select(e => new CreatedEntry(e.RelativePath, e.Bytes, e.CreatedUtc))
+            .ToList();
+
+    private static List<LruPoint> BuildProfile(List<Entry> entries, DateTime now)
+    {
+        var points = new List<LruPoint>();
+        long total = entries.Sum(e => e.Bytes);
+        if (total == 0) return points;
+
+        long step = (total + MaxProfilePoints - 1) / MaxProfilePoints;
+        long cumulative = 0, recent = 0, nextMark = step;
+        foreach (var e in entries.OrderBy(e => e.LastUsedUtc))
+        {
+            cumulative += e.Bytes;
+            if (now - e.LastUsedUtc < RecentAge) recent += e.Bytes;
+            if (cumulative < nextMark && cumulative < total) continue;
+            points.Add(new LruPoint(cumulative, recent));
+            nextMark = (cumulative / step + 1) * step;
+        }
+        return points;
     }
 
     // ---------- scanning ----------
@@ -180,8 +223,8 @@ public sealed class CacheTrimmer
                 ct.ThrowIfCancellationRequested();
                 var rel = Relative(root, f.FullName);
                 if (rel.StartsWith(TrashPrefix, StringComparison.OrdinalIgnoreCase)) continue;
-                if (!TryStat(f, out var bytes, out var used)) continue;
-                list.Add(new Entry(f.FullName, rel, false, bytes, 1, used));
+                if (!TryStat(f, out var bytes, out var used, out var created)) continue;
+                list.Add(new Entry(f.FullName, rel, false, bytes, 1, used, created));
             }
         }
         else
@@ -193,8 +236,8 @@ public sealed class CacheTrimmer
 
                 if (info is FileInfo f)
                 {
-                    if (TryStat(f, out var bytes, out var used))
-                        list.Add(new Entry(f.FullName, f.Name, false, bytes, 1, used));
+                    if (TryStat(f, out var bytes, out var used, out var created))
+                        list.Add(new Entry(f.FullName, f.Name, false, bytes, 1, used, created));
                 }
                 else if (info is DirectoryInfo d)
                 {
@@ -206,13 +249,13 @@ public sealed class CacheTrimmer
                         foreach (var child in d.EnumerateFiles("*", Recursive))
                         {
                             ct.ThrowIfCancellationRequested();
-                            if (!TryStat(child, out var b, out var u)) continue;
+                            if (!TryStat(child, out var b, out var u, out _)) continue;
                             bytes += b;
                             files++;
                             if (u > used) used = u;
                         }
                     }
-                    list.Add(new Entry(d.FullName, d.Name, true, bytes, files, used));
+                    list.Add(new Entry(d.FullName, d.Name, true, bytes, files, used, d.CreationTimeUtc));
                 }
             }
         }
@@ -220,18 +263,20 @@ public sealed class CacheTrimmer
         return list;
     }
 
-    private static bool TryStat(FileInfo f, out long bytes, out DateTime lastUsedUtc)
+    private static bool TryStat(FileInfo f, out long bytes, out DateTime lastUsedUtc, out DateTime createdUtc)
     {
         try
         {
             bytes = f.Length;
             lastUsedUtc = LastUsed(f);
+            createdUtc = f.CreationTimeUtc;
             return true;
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
         bytes = 0;
         lastUsedUtc = default;
+        createdUtc = default;
         return false;
     }
 

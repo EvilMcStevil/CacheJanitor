@@ -147,6 +147,50 @@ public sealed class CacheTrimmerTests
     }
 
     [TestMethod]
+    public async Task Created_ListsEntriesCreatedSinceTheGivenTime()
+    {
+        MakeFile("old.bin", 10, TimeSpan.FromDays(2));
+        MakeFile("new.bin", 10, TimeSpan.FromSeconds(30));   // within the 1-minute allowance
+        var r = await Trimmer("1MB").TrimAsync(createdSinceUtc: DateTime.UtcNow);
+        r.Created.Select(c => c.RelativePath).ShouldBe(["new.bin"]);
+        r.Created[0].Bytes.ShouldBe(10 * 1024);
+    }
+
+    [TestMethod]
+    public async Task Created_IsEmptyWithoutAThreshold()
+    {
+        MakeFile("new.bin", 10, TimeSpan.FromSeconds(30));
+        (await Trimmer("1MB").TrimAsync()).Created.ShouldBeEmpty();
+    }
+
+    [TestMethod]
+    public async Task Created_InTopLevelMode_UsesTheFolder()
+    {
+        MakeFile("pkg/1.0/a.bin", 10, TimeSpan.FromSeconds(30));
+        Directory.SetCreationTimeUtc(Path.Combine(_root, "pkg"), DateTime.UtcNow.AddSeconds(-30));
+        var r = await Trimmer("1MB", EvictionUnit.TopLevelEntry).TrimAsync(createdSinceUtc: DateTime.UtcNow.AddMinutes(-5));
+        r.Created.Select(c => c.RelativePath).ShouldBe(["pkg"]);
+    }
+
+    [TestMethod]
+    public async Task UntouchedBytes_CountsEntriesUnused90DaysOrMore()
+    {
+        MakeFile("ancient.bin", 30, TimeSpan.FromDays(100));
+        MakeFile("recent.bin", 20, TimeSpan.FromDays(10));
+        (await Trimmer("1MB").TrimAsync()).UntouchedBytes.ShouldBe(30 * 1024);
+    }
+
+    [TestMethod]
+    public async Task Profile_IsCumulativeOldestFirst()
+    {
+        MakeFile("a.bin", 10, TimeSpan.FromDays(30));
+        MakeFile("b.bin", 20, TimeSpan.FromDays(3));
+        var p = (await Trimmer("1MB").TrimAsync()).Profile;
+        p[^1].ShouldBe(new CacheTrimmer.LruPoint(30 * 1024, 20 * 1024));
+        p.Select(x => x.Bytes).ShouldBeInOrder();
+    }
+
+    [TestMethod]
     public async Task MissingFolder_Throws()
     {
         var t = new CacheTrimmer(new CacheFolderOptions { Path = Path.Combine(_root, "nope"), MaxSize = "1GB" }, NullLogger.Instance);
