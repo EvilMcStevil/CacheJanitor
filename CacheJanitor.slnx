@@ -8,7 +8,16 @@
     <Project Path="tests/CacheJanitor.Tests/CacheJanitor.Tests.csproj" />
   </Folder>
   <Folder Name="/installer/">
-    <Project Path="installer/msi/CacheJanitor.Installer.wixproj" />
-    <Project Path="installer/bundle/CacheJanitor.Bundle.wixproj" />
+    <Project Path="installer/msi/CacheJanitor.Installer.wixproj">
+      <Platform Project="x64" />
+      <Build Project="true" />
+      <BuildDependency Project="src/CacheJanitor/CacheJanitor.csproj" />
+      <BuildDependency Project="src/CacheJanitor.Tray/CacheJanitor.Tray.csproj" />
+    </Project>
+    <Project Path="installer/bundle/CacheJanitor.Bundle.wixproj">
+      <Platform Project="x64" />
+      <Build Project="true" />
+      <BuildDependency Project="installer/msi/CacheJanitor.Installer.wixproj" />
+    </Project>
   </Folder>
 </Solution>

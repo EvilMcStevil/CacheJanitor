@@ -153,7 +153,7 @@ Needs the .NET 10 SDK. The installers use WiX 5, restored from NuGet like any pa
 
 ```
 dotnet test tests/CacheJanitor.Tests
-dotnet build installer/bundle/CacheJanitor.Bundle.wixproj -c Release -p:Version=1.2.3
+dotnet build -c Release -p:Version=1.2.3
 # -> installer/msi/bin/x64/Release/CacheJanitor-1.2.3-x64.msi
 # -> installer/bundle/bin/x64/Release/CacheJanitorSetup-1.2.3-x64.exe
 ```
