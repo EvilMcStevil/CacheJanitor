@@ -7,10 +7,8 @@
     <!-- NotifyIcon and its menu come from Windows Forms. -->
     <UseWindowsForms>true</UseWindowsForms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>true</SelfContained>
+    <SelfContained>false</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <AssemblyName>CacheJanitorTray</AssemblyName>
     <RootNamespace>CacheJanitor.Tray</RootNamespace>
     <ApplicationIcon>..\..\assets\CacheJanitor.ico</ApplicationIcon>

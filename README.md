@@ -25,13 +25,25 @@ a tray app to watch and configure it.
 
 ## Install
 
+Both apps need the **.NET 10 Desktop Runtime** (x64), which includes the base .NET runtime
+the service uses. There are two ways to install:
+
 ```
-msiexec /i CacheJanitor-1.0.0-x64.msi                       # interactive
+CacheJanitorSetup-1.0.0-x64.exe                             # installs the runtime if missing, then CacheJanitor
+CacheJanitorSetup-1.0.0-x64.exe /quiet                      # the same, silently
+
+msiexec /i CacheJanitor-1.0.0-x64.msi                       # runtime already installed
 msiexec /i CacheJanitor-1.0.0-x64.msi /qn                   # silent, service and tray
 msiexec /i CacheJanitor-1.0.0-x64.msi /qn ADDLOCAL=Service  # silent, service only (headless agents)
 ```
 
-The MSI installs to `C:\Program Files\CacheJanitor`:
+`CacheJanitorSetup` downloads the runtime from Microsoft only when no 10.x Desktop Runtime is
+present, and leaves it installed if CacheJanitor is later removed. The MSI on its own does not
+check: without the runtime it still installs, the service fails to start (Event Viewer shows
+a ".NET Runtime" error saying which runtime to install), and the tray app shows a dialog with
+a download link.
+
+CacheJanitor installs to `C:\Program Files\CacheJanitor`:
 
 - **CacheJanitor service** — runs as LocalSystem, automatic (delayed) start, restarts itself
   after a crash or a non-zero exit. Logs to Event Viewer → Windows Logs → Application,
@@ -137,15 +149,24 @@ test instance against a separate `config.json`; the tray app honours it too.
 
 ## Build
 
-Needs the .NET 10 SDK. Both apps publish self-contained, so agents don't need .NET.
+Needs the .NET 10 SDK. The installers use WiX 5, restored from NuGet like any package.
 
 ```
 dotnet test tests/CacheJanitor.Tests
-dotnet build installer/CacheJanitor.Installer.wixproj -c Release -p:Version=1.2.3
-# -> installer/bin/x64/Release/CacheJanitor-1.2.3-x64.msi
+dotnet build installer/bundle/CacheJanitor.Bundle.wixproj -c Release -p:Version=1.2.3
+# -> installer/msi/bin/x64/Release/CacheJanitor-1.2.3-x64.msi
+# -> installer/bundle/bin/x64/Release/CacheJanitorSetup-1.2.3-x64.exe
 ```
 
+The setup's runtime download is pinned to one release (hash-checked) in
+`installer/bundle/DotNetRuntime.wxs`; that file says how to regenerate it for a newer one.
+Any installed 10.x satisfies it, so this only matters for machines without .NET 10.
+
 `tools/make-icon.ps1` regenerates `assets/CacheJanitor.ico`.
+
+## Licence
+
+MIT; see [LICENSE](LICENSE).
 
 ## Things to know
 

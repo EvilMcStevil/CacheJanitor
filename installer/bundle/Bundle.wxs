@@ -1,0 +1,26 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:netfx="http://wixtoolset.org/schemas/v4/wxs/netfx">
+
+  <!-- CacheJanitorSetup.exe: installs the .NET Desktop Runtime if this machine has no 10.x, then CacheJanitor.msi. -->
+  <Bundle Name="CacheJanitor"
+          Manufacturer="Steve Brain"
+          Copyright="Copyright (c) 2026 Steve Brain. MIT License."
+          Version="$(var.ProductVersion)"
+          UpgradeCode="083A1688-2018-40C4-B02D-4A2F76FC1341"
+          IconSourceFile="..\..\assets\CacheJanitor.ico">
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication Theme="rtfLicense" LicenseFile="License.rtf" SuppressOptionsUI="yes" ShowVersion="yes" />
+    </BootstrapperApplication>
+
+    <!-- The Desktop Runtime includes the base .NET runtime, so it covers the service as well as the tray. -->
+    <netfx:DotNetCoreSearch Id="DesktopRuntimeSearch" RuntimeType="desktop" Platform="x64" MajorVersion="10"
+                            Variable="DotNetDesktopRuntimeVersion" />
+
+    <Chain>
+      <PackageGroupRef Id="DotNetDesktopRuntime" />
+      <MsiPackage Id="CacheJanitor" SourceFile="$(var.CacheJanitor.Installer.TargetPath)" />
+    </Chain>
+  </Bundle>
+</Wix>

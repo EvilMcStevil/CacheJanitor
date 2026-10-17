@@ -1,0 +1,29 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <!--
+    The .NET 10 Desktop Runtime, downloaded from Microsoft only when no 10.x is installed. It is left installed
+    when CacheJanitor is removed, since other applications may use it. The payload below was generated with:
+
+      wix burn remotepayload windowsdesktop-runtime-<version>-win-x64.exe -packagetype exe
+        -downloadurl https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/<version>/windowsdesktop-runtime-<version>-win-x64.exe
+  -->
+  <Fragment>
+    <PackageGroup Id="DotNetDesktopRuntime">
+      <ExePackage Id="DotNetDesktopRuntime"
+                  DisplayName=".NET 10 Desktop Runtime"
+                  DetectCondition="DotNetDesktopRuntimeVersion &gt;= v10.0.0"
+                  Permanent="yes"
+                  Vital="yes"
+                  InstallArguments="/install /quiet /norestart"
+                  RepairArguments="/repair /quiet /norestart">
+        <ExePackagePayload Name="windowsdesktop-runtime-10.0.13-win-x64.exe"
+                           ProductName="Microsoft Windows Desktop Runtime 10.0.13 (x64)"
+                           Description="Microsoft Windows Desktop Runtime 10.0.13 (x64)"
+                           DownloadUrl="https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.13/windowsdesktop-runtime-10.0.13-win-x64.exe"
+                           Hash="ADAF5E06B66B145848F3A994B51EA1590D19A5C02F6E7C5899ED896BBDB020AF6386D2EAEF613034D697388ADAF48AA8C3291343F0BBB5F8E62E37AFF9564A00"
+                           Size="60056984"
+                           Version="10.0.13.50000" />
+      </ExePackage>
+    </PackageGroup>
+  </Fragment>
+</Wix>

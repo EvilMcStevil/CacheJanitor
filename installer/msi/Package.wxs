@@ -2,7 +2,7 @@
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <?define ServiceName = "CacheJanitor" ?>
-  <!-- The self-contained single-file publish output of each app (bind paths added by the Publish="true" references). -->
+  <!-- The single-file, framework-dependent publish output of each app (bind paths added by the Publish="true" references). -->
   <?define ServiceDir = "!(bindpath.CacheJanitor)" ?>
   <?define TrayDir = "!(bindpath.CacheJanitor.Tray)" ?>
 
@@ -18,7 +18,7 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
-    <Icon Id="CacheJanitor.ico" SourceFile="..\assets\CacheJanitor.ico" />
+    <Icon Id="CacheJanitor.ico" SourceFile="..\..\assets\CacheJanitor.ico" />
     <Property Id="ARPPRODUCTICON" Value="CacheJanitor.ico" />
 
     <!-- Close a running tray app before its exe is replaced or removed. -->
@@ -69,7 +69,9 @@
                               RestartServiceDelayInSeconds="60"
                               ResetPeriodInDays="1" />
         </ServiceInstall>
-        <ServiceControl Id="CacheJanitorControl" Name="$(var.ServiceName)" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+        <ServiceControl Id="CacheJanitorStop" Name="$(var.ServiceName)" Stop="both" Remove="uninstall" Wait="yes" />
+        <!-- Not waited on: without the .NET runtime the service cannot start, and that must not roll the install back. -->
+        <ServiceControl Id="CacheJanitorStart" Name="$(var.ServiceName)" Start="install" Wait="no" />
       </Component>
 
       <Component Id="ServiceSettings" Bitness="always64">

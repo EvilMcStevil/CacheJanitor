@@ -1,4 +1,4 @@
-<Project Sdk="WixToolset.Sdk/6.0.1">
+<Project Sdk="WixToolset.Sdk/5.0.2">
 
   <PropertyGroup>
     <OutputName>CacheJanitor-$(Version)-x64</OutputName>
@@ -12,13 +12,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="WixToolset.Util.wixext" Version="6.0.1" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Publish="true" builds each app's self-contained single-file publish output and binds the package to it. -->
-    <ProjectReference Include="..\src\CacheJanitor\CacheJanitor.csproj" Publish="true" />
-    <ProjectReference Include="..\src\CacheJanitor.Tray\CacheJanitor.Tray.csproj" Publish="true" />
+    <!-- Publish="true" builds each app's single-file publish output and binds the package to it. -->
+    <ProjectReference Include="..\..\src\CacheJanitor\CacheJanitor.csproj" Publish="true" />
+    <ProjectReference Include="..\..\src\CacheJanitor.Tray\CacheJanitor.Tray.csproj" Publish="true" />
   </ItemGroup>
 
 </Project>
