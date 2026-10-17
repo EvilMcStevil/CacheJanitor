@@ -41,8 +41,16 @@ public static class ConfigFile
     public static void Save(string path, JanitorOptions options)
     {
         var temp = path + ".tmp";
-        File.WriteAllText(temp, Serialize(options));
-        File.Move(temp, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(temp, Serialize(options));
+            File.Move(temp, path, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            throw;
+        }
     }
 
     /// <summary>Problems that would stop a cache entry from being managed, one message per problem.</summary>

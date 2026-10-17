@@ -1,6 +1,5 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
-using Microsoft.Extensions.Logging;
 
 namespace CacheJanitor;
 
@@ -11,15 +10,13 @@ namespace CacheJanitor;
 /// </summary>
 public static class DataDirectory
 {
-    public static void EnsureSecured(ILogger log)
+    /// <summary>Creates and secures the folder. Returns a warning if the permissions could not be set.</summary>
+    public static string? EnsureSecured()
     {
         var dir = AppPaths.DataDirectory;
         Directory.CreateDirectory(dir);
         if (!IsElevated())
-        {
-            log.LogDebug("Not elevated; leaving permissions on {Dir} as they are.", dir);
-            return;
-        }
+            return null;
 
         try
         {
@@ -43,14 +40,15 @@ public static class DataDirectory
                 fs.SetAccessRuleProtection(isProtected: false, preserveInheritance: false);
                 new FileInfo(file).SetAccessControl(fs);
             }
+            return null;
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or InvalidOperationException)
         {
-            log.LogWarning("Could not secure {Dir}: {Message}", dir, ex.Message);
+            return $"Could not secure {dir}: {ex.Message}";
         }
     }
 
-    private static bool IsElevated()
+    public static bool IsElevated()
     {
         using var identity = WindowsIdentity.GetCurrent();
         return identity.IsSystem || new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);

@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/CacheJanitor.Core/CacheJanitor.Core.csproj" />
     <Project Path="src/CacheJanitor/CacheJanitor.csproj" />
+    <Project Path="src/CacheJanitor.Tray/CacheJanitor.Tray.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/CacheJanitor.Tests/CacheJanitor.Tests.csproj" />

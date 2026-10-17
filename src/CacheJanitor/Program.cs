@@ -40,7 +40,8 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 });
 
 using (var bootLoggers = LoggerFactory.Create(b => b.AddConsole()))
-    DataDirectory.EnsureSecured(bootLoggers.CreateLogger("CacheJanitor"));
+    if (DataDirectory.EnsureSecured() is { } warning)
+        bootLoggers.CreateLogger("CacheJanitor").LogWarning("{Warning}", warning);
 
 builder.Configuration.AddJsonFile(AppPaths.ConfigPath, optional: true, reloadOnChange: true);
 builder.Services.AddWindowsService(o => o.ServiceName = AppPaths.ServiceName);

@@ -1,0 +1,452 @@
+<Window x:Class="CacheJanitor.Tray.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:charts="clr-namespace:CacheJanitor.Tray.Charts"
+        xmlns:local="clr-namespace:CacheJanitor.Tray"
+        xmlns:core="clr-namespace:CacheJanitor;assembly=CacheJanitor.Core"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+        Title="CacheJanitor" Width="1180" Height="800" MinWidth="860" MinHeight="560"
+        Icon="pack://application:,,,/CacheJanitor.ico"
+        WindowStartupLocation="CenterScreen">
+
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    <local:LevelToBrushConverter x:Key="LevelBrush" />
+    <ObjectDataProvider x:Key="Units" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+      <ObjectDataProvider.MethodParameters>
+        <x:Type TypeName="core:EvictionUnit" />
+      </ObjectDataProvider.MethodParameters>
+    </ObjectDataProvider>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <!-- Header: service state and controls -->
+    <DockPanel Grid.Row="0" Margin="24,18,24,12" LastChildFill="False">
+      <Image DockPanel.Dock="Left" Source="pack://application:,,,/CacheJanitor.ico" Width="36" Height="36" Margin="0,0,14,0" />
+      <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center">
+        <TextBlock Text="CacheJanitor" FontSize="20" FontWeight="SemiBold" />
+        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+          <Ellipse x:Name="ServiceDot" Width="8" Height="8" Margin="0,1,6,0" VerticalAlignment="Center" />
+          <TextBlock x:Name="ServiceText" Style="{StaticResource Secondary}" />
+        </StackPanel>
+      </StackPanel>
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+        <Button x:Name="TrimAllButton" Click="TrimAll_Click" Margin="0,0,8,0" ToolTip="Check every folder against its limit now">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{StaticResource Glyph}" Text="&#xE895;" Margin="0,0,8,0" />
+            <TextBlock Text="Trim all now" />
+          </StackPanel>
+        </Button>
+        <Button x:Name="StartButton" Click="Start_Click" Margin="0,0,8,0">
+          <StackPanel Orientation="Horizontal">
+            <Image Source="{x:Static local:Shield.Icon}" Width="16" Height="16" Margin="0,0,8,0" Visibility="{x:Static local:Shield.Visibility}" />
+            <TextBlock Text="Start service" />
+          </StackPanel>
+        </Button>
+        <Button x:Name="RestartButton" Click="Restart_Click" Margin="0,0,8,0">
+          <StackPanel Orientation="Horizontal">
+            <Image Source="{x:Static local:Shield.Icon}" Width="16" Height="16" Margin="0,0,8,0" Visibility="{x:Static local:Shield.Visibility}" />
+            <TextBlock Text="Restart" />
+          </StackPanel>
+        </Button>
+        <Button x:Name="StopButton" Click="Stop_Click">
+          <StackPanel Orientation="Horizontal">
+            <Image Source="{x:Static local:Shield.Icon}" Width="16" Height="16" Margin="0,0,8,0" Visibility="{x:Static local:Shield.Visibility}" />
+            <TextBlock Text="Stop" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+    </DockPanel>
+
+    <!-- Notices -->
+    <ItemsControl Grid.Row="1" x:Name="Notices" Margin="24,0,24,0">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate DataType="{x:Type local:Notice}">
+          <Border CornerRadius="8" Padding="14,10" Margin="0,0,0,10" BorderThickness="1"
+                  Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                  BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Left" Style="{StaticResource Glyph}" Text="&#xE7BA;" FontSize="16" Margin="0,0,12,0"
+                         Foreground="{Binding Level, Converter={StaticResource LevelBrush}}" VerticalAlignment="Top" />
+              <StackPanel>
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Style="{StaticResource Secondary}" TextTrimming="None" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <Grid Grid.Row="2" Margin="24,4,24,16">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="300" />
+        <ColumnDefinition Width="20" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+
+      <!-- Folder list -->
+      <DockPanel Grid.Column="0">
+        <TextBlock DockPanel.Dock="Top" Text="Folders" Style="{StaticResource CardTitle}" />
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
+          <Button Click="AddFolder_Click" Margin="0,0,8,0">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Style="{StaticResource Glyph}" Text="&#xE710;" Margin="0,0,8,0" />
+              <TextBlock Text="Add folder" />
+            </StackPanel>
+          </Button>
+          <Button Click="RemoveFolder_Click" IsEnabled="{Binding HasSelection}">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Style="{StaticResource Glyph}" Text="&#xE74D;" Margin="0,0,8,0" />
+              <TextBlock Text="Remove" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+        <Grid>
+          <ListBox x:Name="CacheList" ItemsSource="{Binding Caches}" SelectedItem="{Binding Selected}"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0">
+            <ListBox.ItemContainerStyle>
+              <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Padding" Value="12,10" />
+                <Setter Property="Margin" Value="0,0,0,4" />
+              </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+              <DataTemplate DataType="{x:Type local:CacheItem}">
+                <StackPanel>
+                  <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontWeight="SemiBold" Margin="8,0,0,0" />
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  </DockPanel>
+                  <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Secondary}" Margin="0,1,0,8" ToolTip="{Binding Path}" />
+                  <charts:UsageBar Fraction="{Binding Fraction}" TargetFraction="{Binding TargetFraction}" Level="{Binding Level}" />
+                  <DockPanel Margin="0,6,0,0">
+                    <TextBlock DockPanel.Dock="Left" Style="{StaticResource Glyph}" Text="{Binding StateGlyph}" FontSize="12" Margin="0,0,6,0"
+                               Foreground="{Binding Level, Converter={StaticResource LevelBrush}}" />
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding UsageText}" Style="{StaticResource Secondary}" Margin="8,0,0,0" />
+                    <TextBlock Text="{Binding StateText}" Style="{StaticResource Secondary}" ToolTip="{Binding StateText}" />
+                  </DockPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock Text="No folders yet. Add a cache folder to start." Style="{StaticResource Hint}" TextAlignment="Center"
+                     VerticalAlignment="Center" Margin="24" x:Name="EmptyListHint" />
+        </Grid>
+      </DockPanel>
+
+      <!-- Selected folder -->
+      <TabControl Grid.Column="2" x:Name="Tabs" Background="Transparent" BorderThickness="0">
+        <TabItem Header="Overview" DataContext="{Binding Selected}" IsEnabled="{Binding DataContext.HasSelection, ElementName=Tabs}">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,4,0">
+            <StackPanel>
+              <UniformGrid Columns="4" Margin="0,0,-12,0">
+                <Border Style="{StaticResource Tile}">
+                  <StackPanel>
+                    <TextBlock Text="Used" Style="{StaticResource TileLabel}" />
+                    <TextBlock Style="{StaticResource TileValue}">
+                      <Run Text="{Binding PercentText, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Text="{Binding UsageText}" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}">
+                  <StackPanel>
+                    <TextBlock Text="Files" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding FilesText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="{Binding FilesSub}" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" ToolTip="How long ago the oldest thing in the cache was last used.">
+                  <StackPanel>
+                    <TextBlock Text="Reaches back" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding ReachText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="{Binding ReachSub}" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" ToolTip="How long the most recently evicted entry had gone unused. If this is short, entries are evicted while still in demand and the limit is too small.">
+                  <StackPanel>
+                    <TextBlock Text="Last eviction" Style="{StaticResource TileLabel}" />
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE7BA;" FontSize="16" Margin="0,0,6,0"
+                                 Foreground="{Binding LastEvictedLevel, Converter={StaticResource LevelBrush}}"
+                                 Visibility="{Binding LastEvictedLevel, Converter={x:Static local:LevelToVisibility.Instance}}" />
+                      <TextBlock Text="{Binding LastEvictedText}" Style="{StaticResource TileValue}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding LastEvictedSub}" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}">
+                  <StackPanel>
+                    <TextBlock Text="Downloaded" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding AddedText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="{Binding AddedSub}" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}">
+                  <StackPanel>
+                    <TextBlock Text="Evicted" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding EvictedText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="{Binding EvictedSub}" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}">
+                  <StackPanel>
+                    <TextBlock Text="Last 24 hours" Style="{StaticResource TileLabel}" />
+                    <TextBlock Style="{StaticResource TileValue}" FontSize="16" Margin="0,4,0,2">
+                      <Run Text="+" Foreground="{DynamicResource TextFillColorSecondaryBrush}" /><Run Text="{Binding Added24hText, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource TileValue}" FontSize="16">
+                      <Run Text="−" Foreground="{DynamicResource TextFillColorSecondaryBrush}" /><Run Text="{Binding Evicted24hText, Mode=OneWay}" />
+                    </TextBlock>
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" ToolTip="Average bytes downloaded into the cache per day over the history kept (up to 7 days).">
+                  <StackPanel>
+                    <TextBlock Text="Download rate" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding TurnoverText}" Style="{StaticResource TileValue}" FontSize="20" />
+                    <TextBlock Text="average over the last week" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+              </UniformGrid>
+
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <DockPanel Margin="0,0,0,8">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                      <RadioButton Content="24 hours" GroupName="RangeA" IsChecked="True" Checked="Range24_Checked" Margin="0,0,12,0" MinWidth="0" x:Name="SizeRange24" />
+                      <RadioButton Content="7 days" GroupName="RangeA" Checked="Range7_Checked" MinWidth="0" x:Name="SizeRange7" />
+                    </StackPanel>
+                    <TextBlock Text="Size" Style="{StaticResource CardTitle}" Margin="0" VerticalAlignment="Center" />
+                  </DockPanel>
+                  <charts:SizeChart x:Name="SizeChart" Height="230" />
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="Age of contents (by last use)" Style="{StaticResource CardTitle}" />
+                  <charts:AgeChart x:Name="AgeChart" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="Activity" DataContext="{Binding Selected}" IsEnabled="{Binding DataContext.HasSelection, ElementName=Tabs}">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,4,0">
+            <StackPanel>
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <DockPanel Margin="0,0,0,8">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                      <RadioButton Content="24 hours" GroupName="RangeB" IsChecked="True" Checked="Range24_Checked" Margin="0,0,12,0" MinWidth="0" x:Name="ChurnRange24" />
+                      <RadioButton Content="7 days" GroupName="RangeB" Checked="Range7_Checked" MinWidth="0" x:Name="ChurnRange7" />
+                    </StackPanel>
+                    <TextBlock Text="Churn" Style="{StaticResource CardTitle}" Margin="0" VerticalAlignment="Center" />
+                  </DockPanel>
+                  <charts:ChurnChart x:Name="ChurnChart" Height="230" />
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="Scanning" Style="{StaticResource CardTitle}" />
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="200" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="26" /><RowDefinition Height="26" /><RowDefinition Height="26" />
+                      <RowDefinition Height="26" /><RowDefinition Height="26" /><RowDefinition Height="26" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Last scan" Style="{StaticResource Secondary}" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LastScanText}" />
+                    <TextBlock Grid.Row="1" Text="Next periodic scan" Style="{StaticResource Secondary}" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding NextScanText}" />
+                    <TextBlock Grid.Row="2" Text="Watching for changes" Style="{StaticResource Secondary}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding WatchingText}" />
+                    <TextBlock Grid.Row="3" Text="Passes" Style="{StaticResource Secondary}" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PassesText}" />
+                    <TextBlock Grid.Row="4" Text="Skipped, in use by a tool" Style="{StaticResource Secondary}" />
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding InUseText}" />
+                    <TextBlock Grid.Row="5" Text="Evicts" Style="{StaticResource Secondary}" />
+                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding PolicyText}" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="Recent evictions" Style="{StaticResource CardTitle}" />
+                  <ListView ItemsSource="{Binding RecentEvictions}" MaxHeight="340" BorderThickness="0" Background="Transparent">
+                    <ListView.View>
+                      <GridView>
+                        <GridViewColumn Header="When" DisplayMemberBinding="{Binding When}" Width="150" />
+                        <GridViewColumn Header="Entry" DisplayMemberBinding="{Binding Entry}" Width="330" />
+                        <GridViewColumn Header="Size" DisplayMemberBinding="{Binding Size}" Width="90" />
+                        <GridViewColumn Header="Unused for" DisplayMemberBinding="{Binding IdleFor}" Width="110" />
+                      </GridView>
+                    </ListView.View>
+                  </ListView>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="Folder settings" DataContext="{Binding Selected}" IsEnabled="{Binding DataContext.HasSelection, ElementName=Tabs}">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,4,0">
+            <Border Style="{StaticResource Card}" Padding="20">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="170" />
+                  <ColumnDefinition Width="*" MaxWidth="560" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Folder" Style="{StaticResource FieldLabel}" />
+                <DockPanel Grid.Row="0" Grid.Column="1">
+                  <Button DockPanel.Dock="Right" Content="Browse…" Click="Browse_Click" Margin="8,0,0,0" />
+                  <TextBox Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" />
+                </DockPanel>
+                <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource Hint}"
+                           Text="Created if missing. Everything in it may be deleted, so give CacheJanitor a folder that only holds cache." />
+
+                <TextBlock Grid.Row="2" Text="Display name" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource Hint}" Text="Optional. Shown instead of the folder name." />
+
+                <TextBlock Grid.Row="4" Text="Size limit" Style="{StaticResource FieldLabel}" />
+                <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal">
+                  <TextBox Text="{Binding MaxSize, UpdateSourceTrigger=PropertyChanged}" Width="160" TextChanged="MaxSize_TextChanged" />
+                  <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource Secondary}" x:Name="SizeEcho" />
+                </StackPanel>
+                <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource Hint}"
+                           Text="For example 100GB, 750MB or 1.5TB (binary units). Leave headroom on the disk for your largest single download: the folder can go over briefly before it is trimmed." />
+
+                <TextBlock Grid.Row="6" Text="Trim down to" Style="{StaticResource FieldLabel}" />
+                <DockPanel Grid.Row="6" Grid.Column="1">
+                  <TextBlock DockPanel.Dock="Right" Width="150" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <Run Text="{Binding TrimToPercent, Mode=OneWay}" /><Run Text="% of the limit" />
+                  </TextBlock>
+                  <Slider Minimum="50" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding TrimToPercent}" />
+                </DockPanel>
+                <TextBlock Grid.Row="7" Grid.Column="1" Style="{StaticResource Hint}"
+                           Text="Once over the limit, evict until the folder is this full, so it is not trimming after every download." />
+
+                <TextBlock Grid.Row="8" Text="Evict" Style="{StaticResource FieldLabel}" />
+                <ComboBox Grid.Row="8" Grid.Column="1" ItemsSource="{Binding Source={StaticResource Units}}" SelectedItem="{Binding Unit}"
+                          Width="220" HorizontalAlignment="Left">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding Converter={x:Static local:UnitToText.Instance}}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Grid.Row="9" Grid.Column="1" Style="{StaticResource Hint}"
+                           Text="Individual files suit flat download caches. Whole top-level entries suit tools that unpack one folder per package or toolchain, where a half-deleted folder would break the tool." />
+
+                <TextBlock Grid.Row="10" Text="Protect for" Style="{StaticResource FieldLabel}" />
+                <StackPanel Grid.Row="10" Grid.Column="1" Orientation="Horizontal">
+                  <TextBox Text="{Binding MinAgeMinutes, UpdateSourceTrigger=PropertyChanged}" Width="90" />
+                  <TextBlock Text="minutes after last use" Margin="12,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Grid.Row="11" Grid.Column="1" Style="{StaticResource Hint}"
+                           Text="Nothing written or read more recently than this is evicted, which protects downloads and builds in progress." />
+
+                <TextBlock Grid.Row="12" Text="Never evict" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,6,16,0" />
+                <StackPanel Grid.Row="12" Grid.Column="1">
+                  <TextBox Text="{Binding ExcludeText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="72"
+                           VerticalScrollBarVisibility="Auto" FontFamily="Cascadia Mono, Consolas" />
+                  <TextBlock Style="{StaticResource Hint}"
+                             Text="One pattern per line, relative to the folder: * and ? match within a name, ** across folders. A pattern that matches a folder protects everything in it. Example: **/*.lock" />
+                </StackPanel>
+
+                <TextBlock Grid.Row="13" Text="Eviction" Style="{StaticResource FieldLabel}" />
+                <CheckBox Grid.Row="13" Grid.Column="1" IsChecked="{Binding Enabled}" Content="Evict when over the limit (clear to only measure this folder)" />
+              </Grid>
+            </Border>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="Service settings">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,4,0">
+            <StackPanel>
+              <Border Style="{StaticResource Card}" Padding="20">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="170" />
+                    <ColumnDefinition Width="*" MaxWidth="560" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Text="Full scan every" Style="{StaticResource FieldLabel}" />
+                  <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
+                    <TextBox Text="{Binding ScanIntervalMinutes, UpdateSourceTrigger=PropertyChanged}" Width="90" />
+                    <TextBlock Text="minutes" Margin="12,0,0,0" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource Hint}"
+                             Text="A safety net behind the folder watcher. A folder that has not changed is rescanned at most hourly, unless it is over its limit." />
+                  <TextBlock Grid.Row="2" Text="Settle time" Style="{StaticResource FieldLabel}" />
+                  <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal">
+                    <TextBox Text="{Binding DebounceSeconds, UpdateSourceTrigger=PropertyChanged}" Width="90" />
+                    <TextBlock Text="seconds" Margin="12,0,0,0" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource Hint}"
+                             Text="After a change in a folder, wait this long for activity to stop before checking its size." />
+                </Grid>
+              </Border>
+              <Border Style="{StaticResource Card}" Padding="20">
+                <StackPanel>
+                  <TextBlock Text="Files" Style="{StaticResource CardTitle}" />
+                  <TextBlock Style="{StaticResource Secondary}" TextTrimming="None" TextWrapping="Wrap" x:Name="FilesInfo" />
+                  <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button Content="Open data folder" Click="OpenDataFolder_Click" Margin="0,0,8,0" />
+                    <Button Content="Open Event Viewer" Click="OpenEventViewer_Click" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+      </TabControl>
+    </Grid>
+
+    <!-- Save bar -->
+    <Border Grid.Row="3" Padding="24,12" BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+            Background="{DynamicResource LayerFillColorDefaultBrush}"
+            Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button Content="Discard changes" Click="Revert_Click" Margin="0,0,8,0" />
+          <Button Click="Save_Click" x:Name="SaveButton" Style="{DynamicResource AccentButtonStyle}">
+            <StackPanel Orientation="Horizontal">
+              <Image Source="{x:Static local:Shield.Icon}" Width="16" Height="16" Margin="0,0,8,0" Visibility="{x:Static local:Shield.Visibility}" />
+              <TextBlock Text="Save" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" x:Name="SaveMessage" Text="You have unsaved changes. The service picks them up as soon as they are saved." />
+      </DockPanel>
+    </Border>
+  </Grid>
+</Window>
