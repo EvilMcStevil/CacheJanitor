@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CacheJanitor.Tests;
@@ -20,7 +19,6 @@ public class ChurnStoreTests
     public void Cleanup()
     {
         _store?.Dispose();
-        SqliteConnection.ClearAllPools();
         foreach (var f in new[] { _db, _db + "-wal", _db + "-shm" })
             if (File.Exists(f)) File.Delete(f);
     }
@@ -88,7 +86,6 @@ public class ChurnStoreTests
         var first = Open();
         first.RecordPass(Cache, 1000, T0, [Ev("a", 100, T0)], NoCreated);
         first.Dispose();
-        SqliteConnection.ClearAllPools();
 
         var second = Open();
         second.LastPassUtc(Cache).ShouldBe(T0);
@@ -156,7 +153,6 @@ public class ChurnStoreTests
         finally
         {
             _store?.Dispose();
-            SqliteConnection.ClearAllPools();
             Directory.Delete(dir, true);
         }
     }
