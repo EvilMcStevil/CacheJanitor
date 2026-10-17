@@ -65,6 +65,32 @@ public class SizingAnalyzerTests
         advice.LastAccessUnreliable.ShouldBeFalse();
     }
 
+
+    [TestMethod]
+    public void OneBurstPlusTrivialChurn_IsNotTooSmall()
+    {
+        var advice = SizingAnalyzer.Analyze(Input(
+        [
+            Thrash("burst", 3 * GB, goneDays: 1, agoDays: 2, reuseDistance: 3 * GB),
+            Thrash("crumb", 50 * KB, goneDays: 1, agoDays: 12, reuseDistance: 3 * GB),
+        ]));
+
+        advice.Verdict.ShouldNotBe(SizingVerdict.TooSmall);
+        advice.SuggestedMaxBytes.ShouldBeNull();
+    }
+
+    [TestMethod]
+    public void SteadyPingPongAtTheLimit_IsTooSmall()
+    {
+        var returns = Enumerable.Range(0, 21)
+            .Select(i => Thrash(i % 2 == 0 ? "p" : "q", 2 * GB, goneDays: 0.5, agoDays: i + 0.5, reuseDistance: 2 * GB))
+            .ToList();
+
+        var advice = SizingAnalyzer.Analyze(Input(returns));
+
+        advice.Verdict.ShouldBe(SizingVerdict.TooSmall);
+        advice.SuggestedMaxBytes.ShouldBe(25 * GB);
+    }
     [TestMethod]
     public void ThrashInOneWeekOnly_IsNotTooSmall()
     {
@@ -149,6 +175,30 @@ public class SizingAnalyzerTests
         advice.SuggestedMaxBytes.ShouldBeNull();
     }
 
+
+    [TestMethod]
+    public void UntouchedButThrashingInOneWeek_IsNotCouldBeSmaller()
+    {
+        var advice = SizingAnalyzer.Analyze(Input(
+        [
+            Thrash("a", 2 * GB, goneDays: 1, agoDays: 2, reuseDistance: 3 * GB),
+            Thrash("b", 2 * GB, goneDays: 2, agoDays: 3, reuseDistance: 4 * GB),
+        ], historyDays: 120, untouched: 6 * GB));
+
+        advice.Verdict.ShouldNotBe(SizingVerdict.CouldBeSmaller);
+        advice.Verdict.ShouldNotBe(SizingVerdict.TooSmall);
+        advice.SuggestedMaxBytes.ShouldBeNull();
+    }
+
+    [TestMethod]
+    public void ShrinkThatRoundsBackToTheLimit_IsAboutRight()
+    {
+        var advice = SizingAnalyzer.Analyze(Input([], historyDays: 120, maxBytes: 2 * GB, currentBytes: 2 * GB, untouched: GB / 2));
+
+        advice.Verdict.ShouldBe(SizingVerdict.AboutRight);
+        advice.SuggestedMaxBytes.ShouldBeNull();
+        advice.ShrinkWithheld.ShouldBeFalse();
+    }
     [TestMethod]
     public void LastAccessOff_WithholdsShrink()
     {
@@ -206,6 +256,51 @@ public class SizingAnalyzerTests
         advice.Curve.Where(p => p.Confident).Select(p => p.MaxBytes).ShouldBe([20 * GB]);
     }
 
+
+    private static readonly ChurnReturn[] CountingAt22 =
+    [
+        R("x", 2 * GB, TimeSpan.FromDays(1), TimeSpan.FromDays(3), 22 * GB, 3 * GB, TimeSpan.FromDays(1)),
+        R("y", 4 * GB, TimeSpan.FromDays(1), TimeSpan.FromDays(10), 22 * GB, 6 * GB, TimeSpan.FromDays(1)),
+    ];
+
+    [TestMethod]
+    public void Curve_PinnedValues()
+    {
+        CacheTrimmer.LruPoint[] profile = [new(2 * GB, 0), new(6 * GB, 2 * GB), new(21 * GB, 5 * GB)];
+        var curve = SizingAnalyzer.Analyze(Input(CountingAt22, historyDays: 14, maxBytes: 22 * GB, currentBytes: 21 * GB,
+            profile: profile)).Curve;
+
+        curve.Single(p => p.MaxBytes == 22 * GB).WeeklyThrashBytes.ShouldBe(3 * GB);
+        curve.Single(p => p.MaxBytes == 26 * GB).WeeklyThrashBytes.ShouldBe(2 * GB);
+        curve.Single(p => p.MaxBytes == 17 * GB).WeeklyThrashBytes.ShouldBe(3 * GB + GB);
+    }
+
+    [TestMethod]
+    public void Curve_HalfFullCache_HasNoExtraThrashBelowTheLimit()
+    {
+        CacheTrimmer.LruPoint[] profile = [new(10 * GB, 5 * GB)];
+        var curve = SizingAnalyzer.Analyze(Input(CountingAt22, historyDays: 14, maxBytes: 22 * GB, currentBytes: 10 * GB,
+            profile: profile)).Curve;
+
+        curve.Where(p => p.MaxBytes is >= 10 * GB and < 22 * GB).ShouldNotBeEmpty();
+        curve.Where(p => p.MaxBytes is >= 10 * GB and < 22 * GB).ShouldAllBe(p => p.WeeklyThrashBytes == 3 * GB);
+    }
+
+    [TestMethod]
+    public void Curve_ReachesASuggestionBeyondTwiceTheLimit()
+    {
+        var advice = SizingAnalyzer.Analyze(Input(
+        [
+            R("a", 2 * GB, TimeSpan.FromDays(1), TimeSpan.FromDays(3), 10 * GB, 20 * GB, TimeSpan.FromDays(1)),
+            R("b", 2 * GB, TimeSpan.FromDays(1), TimeSpan.FromDays(12), 10 * GB, 20 * GB, TimeSpan.FromDays(1)),
+        ], maxBytes: 10 * GB, currentBytes: 10 * GB));
+
+        advice.Verdict.ShouldBe(SizingVerdict.TooSmall);
+        advice.SuggestedMaxBytes.ShouldBe(30 * GB);
+        advice.Curve[^1].MaxBytes.ShouldBeGreaterThanOrEqualTo(30 * GB);
+        advice.Curve.Select(p => p.MaxBytes).ShouldBe(advice.Curve.Select(p => p.MaxBytes).Order());
+        advice.Curve[^1].WeeklyThrashBytes.ShouldBe(0);
+    }
     [TestMethod]
     public void TopReturned_RanksByTotalBytes_Top10()
     {

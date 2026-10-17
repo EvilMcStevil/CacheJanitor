@@ -23,6 +23,7 @@ public static class SizingAnalyzer
     private const long SmallFileBytes = 1L << 20;
     private const long TooSmallMinBytes = GiB;
     private const double TooSmallMinFraction = 0.05;
+    private const double TooSmallPeriodFraction = 0.2;
     private const double SuggestedAvoidedFraction = 0.8;
     private const double ShrinkMinFraction = 0.2;
     private const int CurvePoints = 12;
@@ -57,15 +58,20 @@ public static class SizingAnalyzer
             BreakBytes = window.Where(r => r.GoneFor > ThrashWindow).Sum(r => r.ReturnedBytes),
             UntouchedBytes = input.UntouchedBytes,
             LastAccessUnreliable = thrashBytes > 0 && staleBytes * 2 >= thrashBytes,
-            Curve = BuildCurve(input, counting, weeks),
             TopReturned = TopReturned(window),
         };
 
         long countingBytes = counting.Sum(r => r.ReturnedBytes);
         bool thrashWorthMentioning = countingBytes > TooSmallMinBytes && countingBytes > input.MaxBytes * TooSmallMinFraction;
-        int periods = counting.Select(r => (int)((input.NowUtc - r.ReturnedUtc) / ThrashWindow)).Distinct().Count();
-        bool shrinkable = history >= ShrinkMinHistory && !thrashWorthMentioning
-            && input.UntouchedBytes >= input.MaxBytes * ShrinkMinFraction;
+        int periods = counting.GroupBy(r => (int)((input.NowUtc - r.ReturnedUtc) / ThrashWindow))
+            .Count(g => g.Sum(r => r.ReturnedBytes) >= countingBytes * TooSmallPeriodFraction);
+        long? shrinkTo = history >= ShrinkMinHistory && !thrashWorthMentioning
+            && input.UntouchedBytes >= input.MaxBytes * ShrinkMinFraction
+            ? Math.Max(
+                Tidy(input.MaxBytes - input.UntouchedBytes, up: false),
+                Tidy(input.CurrentBytes - input.UntouchedBytes, up: true))
+            : null;
+        bool shrinkable = shrinkTo < input.MaxBytes;
 
         if (history < TooSmallMinHistory)
         {
@@ -79,15 +85,14 @@ public static class SizingAnalyzer
         else if (shrinkable && input.LastAccessEnabled != false)
         {
             advice.Verdict = SizingVerdict.CouldBeSmaller;
-            advice.SuggestedMaxBytes = Math.Max(
-                Tidy(input.MaxBytes - input.UntouchedBytes, up: false),
-                Tidy(input.CurrentBytes - input.UntouchedBytes, up: true));
+            advice.SuggestedMaxBytes = shrinkTo;
         }
         else
         {
             advice.Verdict = SizingVerdict.AboutRight;
             advice.ShrinkWithheld = shrinkable;
         }
+        advice.Curve = BuildCurve(input, counting, weeks, advice.SuggestedMaxBytes);
         return advice;
     }
 
@@ -115,13 +120,16 @@ public static class SizingAnalyzer
 
     /// <summary>
     /// Above the current limit, weekly thrash still counting at each point; confident up to the largest needed limit seen.
-    /// Below it, the counting thrash plus the recently used bytes the extra cut would have evicted, read from the
-    /// LRU profile; never confident, since it relies on last-used times rather than eviction evidence.
+    /// Below it, the counting thrash plus the recently used bytes among the oldest bytes the cache holds beyond that
+    /// limit, read from the LRU profile; never confident, since it relies on last-used times rather than eviction
+    /// evidence. The points run from half the limit to twice it, or to just past <paramref name="suggested"/> when
+    /// that is higher.
     /// </summary>
-    private static List<SizingPoint> BuildCurve(SizingInput input, List<ChurnReturn> counting, double weeks)
+    private static List<SizingPoint> BuildCurve(SizingInput input, List<ChurnReturn> counting, double weeks, long? suggested)
     {
         long max = input.MaxBytes;
-        long first = max / 2, span = 2 * max - first;
+        long last = suggested > 2 * max ? (long)(suggested.Value * 1.1) : 2 * max;
+        long first = max / 2, span = last - first;
         long largestNeeded = counting.Count > 0 ? counting.Max(r => r.NeededMaxBytes) : max;
         long countingWeekly = (long)(counting.Sum(r => r.ReturnedBytes) / weeks);
 
@@ -140,7 +148,7 @@ public static class SizingAnalyzer
                 : new SizingPoint
                 {
                     MaxBytes = limit,
-                    WeeklyThrashBytes = countingWeekly + RecentBytesWithin(input.Profile, max - limit),
+                    WeeklyThrashBytes = countingWeekly + RecentBytesWithin(input.Profile, Math.Max(0, input.CurrentBytes - limit)),
                     Confident = false,
                 })
             .ToList();
