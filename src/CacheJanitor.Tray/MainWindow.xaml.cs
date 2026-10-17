@@ -178,8 +178,10 @@ public partial class MainWindow : Window
         var item = new CacheItem(new CacheFolderOptions { Path = dialog.FolderName, MaxSize = SuggestLimit(dialog.FolderName) });
         Model.Add(item);
         Model.Selected = item;
-        Tabs.SelectedIndex = 2;
+        Tabs.SelectedItem = SettingsTab;
     }
+
+    private void SeeSizing_Click(object sender, RoutedEventArgs e) => Tabs.SelectedItem = SizingTab;
 
     /// <summary>A starting limit: a quarter of the drive's total size, rounded to a whole number of gigabytes.</summary>
     private static string SuggestLimit(string folder)

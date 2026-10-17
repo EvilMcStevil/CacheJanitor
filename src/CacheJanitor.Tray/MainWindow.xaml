@@ -163,6 +163,20 @@
         <TabItem Header="Overview" DataContext="{Binding Selected}" IsEnabled="{Binding DataContext.HasSelection, ElementName=Tabs}">
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,4,0">
             <StackPanel>
+              <Border CornerRadius="8" Padding="14,10" Margin="0,0,0,10" BorderThickness="1"
+                      Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                      BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                      Visibility="{Binding ShowTooSmallBanner, Converter={StaticResource BoolToVis}}">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="See details" Click="SeeSizing_Click" VerticalAlignment="Center" Margin="12,0,0,0" />
+                  <TextBlock DockPanel.Dock="Left" Style="{StaticResource Glyph}" Text="&#xE7BA;" FontSize="16" Margin="0,0,12,0"
+                             Foreground="{Binding AdviceLevel, Converter={StaticResource LevelBrush}}" VerticalAlignment="Top" />
+                  <StackPanel>
+                    <TextBlock Text="{Binding BannerTitle}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding BannerDetail}" TextWrapping="Wrap" Style="{StaticResource Secondary}" TextTrimming="None" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
               <UniformGrid Columns="4" Margin="0,0,-12,0">
                 <Border Style="{StaticResource Tile}">
                   <StackPanel>
@@ -229,6 +243,20 @@
                     <TextBlock Text="Download rate" Style="{StaticResource TileLabel}" />
                     <TextBlock Text="{Binding TurnoverText}" Style="{StaticResource TileValue}" FontSize="20" />
                     <TextBlock Text="average over the last week" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" ToolTip="Data evicted and then downloaded again within 7 days, over the last 30 days.">
+                  <StackPanel>
+                    <TextBlock Text="Re-downloaded" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding ReDownloadedText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="{Binding ReDownloadedSub}" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" ToolTip="The size limit that would have kept most of the re-downloaded data.">
+                  <StackPanel>
+                    <TextBlock Text="Suggested limit" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding SuggestedText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="{Binding SuggestedSub}" Style="{StaticResource Secondary}" />
                   </StackPanel>
                 </Border>
               </UniformGrid>
@@ -319,7 +347,10 @@
           </ScrollViewer>
         </TabItem>
 
-        <TabItem Header="Folder settings" DataContext="{Binding Selected}" IsEnabled="{Binding DataContext.HasSelection, ElementName=Tabs}">
+        <TabItem Header="Sizing" x:Name="SizingTab" DataContext="{Binding Selected}" IsEnabled="{Binding DataContext.HasSelection, ElementName=Tabs}">
+        </TabItem>
+
+        <TabItem Header="Folder settings" x:Name="SettingsTab" DataContext="{Binding Selected}" IsEnabled="{Binding DataContext.HasSelection, ElementName=Tabs}">
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,4,0">
             <Border Style="{StaticResource Card}" Padding="20">
               <Grid>

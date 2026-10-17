@@ -169,6 +169,18 @@ public sealed class CacheItem : Observable
         }
     }
 
+    // ---- sizing ----
+
+    public bool ShowTooSmallBanner => Sizing?.Verdict == SizingVerdict.TooSmall;
+    public string BannerTitle => Sizing is { } z ? $"Too small: {Fmt.Size(z.ThrashBytes)} downloaded again in 30 days" : "";
+    public string BannerDetail => Sizing?.SuggestedMaxBytes is { } b ? $"A {Fmt.Size(b)} limit would have kept most of it." : "";
+
+    public string ReDownloadedText => Sizing is { } z ? Fmt.Size(z.ThrashBytes) : "—";
+    public string ReDownloadedSub => Sizing is { } z ? $"30 days · {Fmt.Count(z.ThrashEntries)} entries" : "";
+
+    public string SuggestedText => Sizing?.SuggestedMaxBytes is { } b ? Fmt.Size(b) : "—";
+    public string SuggestedSub => LimitBytes > 0 ? $"now {Fmt.Size(LimitBytes)}" : "";
+
     // ---- activity ----
 
     public string LastScanText => Status?.LastScanUtc is { } t ? $"{Fmt.Ago(t)} (took {(Status.LastScanSeconds < 1 ? $"{Status.LastScanSeconds * 1000:0} ms" : $"{Status.LastScanSeconds.ToString("0.#", CultureInfo.CurrentCulture)} s")})" : "not yet";

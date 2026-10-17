@@ -40,4 +40,27 @@ public class TrayTextTests
         TrayIcon.AdviceTag(new SizingAdvice { Verdict = SizingVerdict.AboutRight }).ShouldBeNull();
         TrayIcon.AdviceTag(null).ShouldBeNull();
     }
+
+    [TestMethod]
+    public void Banner_OnlyForTooSmall_WithFigures()
+    {
+        var item = new CacheItem(new CacheFolderOptions { Path = @"D:\c", MaxSize = "20GB" })
+        {
+            Status = new CacheStatus
+            {
+                Sizing = new SizingAdvice { Verdict = SizingVerdict.TooSmall, ThrashBytes = 27 * Gb, ThrashEntries = 140, SuggestedMaxBytes = 25 * Gb },
+            },
+        };
+        item.ShowTooSmallBanner.ShouldBeTrue();
+        item.BannerTitle.ShouldContain("27 GB");
+        item.BannerDetail.ShouldContain("25 GB");
+        item.SuggestedText.ShouldBe("25 GB");
+        item.SuggestedSub.ShouldBe("now 20 GB");
+        item.ReDownloadedText.ShouldBe("27 GB");
+        item.ReDownloadedSub.ShouldBe("30 days · 140 entries");
+
+        item.Status = new CacheStatus { Sizing = new SizingAdvice { Verdict = SizingVerdict.AboutRight } };
+        item.ShowTooSmallBanner.ShouldBeFalse();
+        item.SuggestedText.ShouldBe("—");
+    }
 }
