@@ -15,7 +15,7 @@
 
     <SummaryInformation Description="Keeps cache folders under a size limit by evicting least recently used files." />
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <Icon Id="CacheJanitor.ico" SourceFile="..\..\assets\CacheJanitor.ico" />
@@ -51,7 +51,7 @@
   <Fragment>
     <ComponentGroup Id="ServiceComponents" Directory="INSTALLFOLDER">
       <Component Id="ServiceExe" Bitness="always64">
-        <File Id="CacheJanitor.exe" Source="$(var.ServiceDir)CacheJanitor.exe" KeyPath="yes" />
+        <File Id="CacheJanitor.exe" Name="CacheJanitor.exe" Source="$(var.ServiceDir)CacheJanitor.exe" KeyPath="yes" />
 
         <ServiceInstall Id="CacheJanitorService"
                         Name="$(var.ServiceName)"
@@ -75,7 +75,7 @@
       </Component>
 
       <Component Id="ServiceSettings" Bitness="always64">
-        <File Id="appsettings.json" Source="$(var.ServiceDir)appsettings.json" KeyPath="yes" />
+        <File Id="appsettings.json" Name="appsettings.json" Source="$(var.ServiceDir)appsettings.json" KeyPath="yes" />
       </Component>
 
       <!-- Event Log source, so the service's entries render without "description cannot be found". -->
@@ -97,7 +97,7 @@
   <Fragment>
     <ComponentGroup Id="TrayComponents" Directory="INSTALLFOLDER">
       <Component Id="TrayExe" Bitness="always64">
-        <File Id="CacheJanitorTray.exe" Source="$(var.TrayDir)CacheJanitorTray.exe" KeyPath="yes">
+        <File Id="CacheJanitorTray.exe" Name="CacheJanitorTray.exe" Source="$(var.TrayDir)CacheJanitorTray.exe" KeyPath="yes">
           <Shortcut Id="TrayStartMenu" Directory="ProgramMenuFolder" Name="CacheJanitor" Description="Cache folder sizes, statistics and settings"
                     WorkingDirectory="INSTALLFOLDER" Icon="CacheJanitor.ico" Advertise="yes" />
         </File>

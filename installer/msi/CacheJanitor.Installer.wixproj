@@ -9,6 +9,8 @@
     <!-- WIX1149: the core ServiceConfig element (MsiServiceConfig) is needed for delayed start and the
          failure-actions flag, which util:ServiceConfig cannot set. -->
     <SuppressSpecificWarnings>1149</SuppressSpecificWarnings>
+    <!-- ICE61: MajorUpgrade allows same-version upgrades, so a rebuild of one version replaces itself. -->
+    <SuppressIces>ICE61</SuppressIces>
   </PropertyGroup>
 
   <ItemGroup>
