@@ -16,13 +16,14 @@ public sealed record ChurnReturn(
     /// <summary>The limit at which the entry would have stayed cached until it was needed again.</summary>
     public long NeededMaxBytes => MaxBytesAtEviction + ReuseDistance;
 
+    /// <summary>How long the entry was out of the cache, from eviction to return.</summary>
     public TimeSpan GoneFor => ReturnedUtc - EvictedUtc;
 }
 
 /// <summary>
 /// SQLite log of every eviction and of the entries that were later recreated, kept in
-/// <see cref="AppPaths.ChurnDbPath"/>. A database that cannot be opened leaves the store inert:
-/// every method returns an empty result.
+/// <see cref="AppPaths.ChurnDbPath"/>. A database that cannot be opened or used, or a native SQLite that
+/// cannot be loaded, leaves the store inert: every method returns an empty result.
 /// </summary>
 public sealed class ChurnStore : IDisposable
 {
@@ -34,24 +35,30 @@ public sealed class ChurnStore : IDisposable
         CREATE TABLE IF NOT EXISTS evictions(id INTEGER PRIMARY KEY, cache_id INTEGER NOT NULL,
           entry TEXT NOT NULL COLLATE NOCASE, bytes INTEGER NOT NULL, last_used_utc INTEGER NOT NULL,
           evicted_utc INTEGER NOT NULL, max_bytes INTEGER NOT NULL, total_after INTEGER NOT NULL,
-          returned_utc INTEGER, returned_bytes INTEGER, total_at_return INTEGER);
+          returned_utc INTEGER, created_utc INTEGER, returned_bytes INTEGER, total_at_return INTEGER);
         CREATE INDEX IF NOT EXISTS ix_open ON evictions(cache_id, entry) WHERE returned_utc IS NULL;
         CREATE INDEX IF NOT EXISTS ix_evicted ON evictions(cache_id, evicted_utc);
         CREATE INDEX IF NOT EXISTS ix_returned ON evictions(cache_id, returned_utc);
+        CREATE INDEX IF NOT EXISTS ix_created ON evictions(cache_id, entry, created_utc) WHERE created_utc IS NOT NULL;
         """;
 
     private readonly ILogger _log;
     private readonly string _path;
+    private readonly Func<string, SqliteConnection> _connect;
     private readonly Lock _lock = new();
     private readonly HashSet<string> _warned = new();
     private SqliteConnection? _db;
 
     public ChurnStore(ILogger<ChurnStore> log) : this(log, AppPaths.ChurnDbPath) { }
 
-    public ChurnStore(ILogger log, string path)
+    public ChurnStore(ILogger log, string path) : this(log, path, cs => new SqliteConnection(cs)) { }
+
+    /// <summary>Opens the store with <paramref name="connect"/> creating the connection from a connection string.</summary>
+    internal ChurnStore(ILogger log, string path, Func<string, SqliteConnection> connect)
     {
         _log = log;
         _path = path;
+        _connect = connect;
         Open();
     }
 
@@ -93,12 +100,15 @@ public sealed class ChurnStore : IDisposable
         {
             using var find = Command(db, """
                 SELECT id FROM evictions WHERE cache_id = $c AND entry = $e AND returned_utc IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM evictions WHERE cache_id = $c AND entry = $e AND created_utc = $t)
                 ORDER BY evicted_utc DESC, id DESC LIMIT 1
                 """, tx);
             find.Parameters.AddWithValue("$c", id);
             var findEntry = find.Parameters.Add("$e", SqliteType.Text);
+            var findTime = find.Parameters.Add("$t", SqliteType.Integer);
             using var mark = Command(db, """
-                UPDATE evictions SET returned_utc = $t, returned_bytes = $b, total_at_return = $total WHERE id = $id
+                UPDATE evictions SET returned_utc = MAX($t, evicted_utc), created_utc = $t, returned_bytes = $b,
+                  total_at_return = $total WHERE id = $id
                 """, tx);
             var markTime = mark.Parameters.Add("$t", SqliteType.Integer);
             var markBytes = mark.Parameters.Add("$b", SqliteType.Integer);
@@ -107,6 +117,7 @@ public sealed class ChurnStore : IDisposable
             foreach (var c in created)
             {
                 findEntry.Value = c.RelativePath;
+                findTime.Value = c.CreatedUtc.Ticks;
                 if (find.ExecuteScalar() is not long rowId) continue;
                 markTime.Value = c.CreatedUtc.Ticks;
                 markBytes.Value = c.Bytes;
@@ -156,7 +167,7 @@ public sealed class ChurnStore : IDisposable
     {
         using var cmd = Command(db, """
             SELECT e.entry, e.evicted_utc, e.last_used_utc, e.max_bytes, e.returned_utc, e.returned_bytes,
-                   e.total_at_return - e.total_after
+                   e.total_at_return - (e.total_after - e.bytes)
             FROM evictions e JOIN caches c ON c.id = e.cache_id
             WHERE c.path = $p AND e.returned_utc >= $since
             ORDER BY e.returned_utc, e.id
@@ -219,7 +230,7 @@ public sealed class ChurnStore : IDisposable
         {
             try
             {
-                var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = _path, Pooling = false }.ToString());
+                var db = _connect(new SqliteConnectionStringBuilder { DataSource = _path, Pooling = false }.ToString());
                 try
                 {
                     db.Open();
@@ -233,7 +244,7 @@ public sealed class ChurnStore : IDisposable
                 }
                 _db = db;
             }
-            catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (!IsFatal(ex))
             {
                 Warn("Could not open the churn history at {Path}, sizing advice is unavailable: {Message}", ex);
             }
@@ -249,7 +260,7 @@ public sealed class ChurnStore : IDisposable
             {
                 return action(_db);
             }
-            catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (!IsFatal(ex))
             {
                 Warn("Could not use the churn history at {Path}: {Message}", ex);
                 return fallback;
@@ -262,6 +273,8 @@ public sealed class ChurnStore : IDisposable
         if (_warned.Add(ex.Message))
             _log.LogWarning(template, _path, ex.Message);
     }
+
+    private static bool IsFatal(Exception ex) => ex is OutOfMemoryException;
 
     private static long EnsureCache(SqliteConnection db, SqliteTransaction tx, string key)
     {

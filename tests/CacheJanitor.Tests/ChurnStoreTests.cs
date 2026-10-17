@@ -48,9 +48,44 @@ public class ChurnStoreTests
         r.Entry.ShouldBe("a");
         r.ReturnedBytes.ShouldBe(80);
         r.MaxBytesAtEviction.ShouldBe(1000);
-        r.ReuseDistance.ShouldBe(80);
-        r.NeededMaxBytes.ShouldBe(1080);
+        r.ReuseDistance.ShouldBe(180);
+        r.NeededMaxBytes.ShouldBe(1180);
         r.GoneFor.ShouldBe(TimeSpan.FromHours(2));
+    }
+
+    [TestMethod]
+    public void PingPong_ReturnsHaveTheirOwnSizeAsDistance()
+    {
+        var store = Open();
+        store.RecordPass(Cache, 1000, T0, [Ev("p", 100, T0)], NoCreated);
+        store.RecordPass(Cache, 1000, T0.AddHours(1), NoEvictions, [New("p", 100, T0.AddHours(1))]);
+        store.RecordPass(Cache, 1000, T0.AddHours(2), [Ev("q", 100, T0.AddHours(2))], NoCreated);
+        store.RecordPass(Cache, 1000, T0.AddHours(3), NoEvictions, [New("q", 100, T0.AddHours(3))]);
+
+        store.ReturnsSince(Cache, T0).Select(r => r.ReuseDistance).ShouldBe([100L, 100L]);
+    }
+
+    [TestMethod]
+    public void CreatedBeforeEviction_IsClampedToTheEvictionTime()
+    {
+        var store = Open();
+        store.RecordPass(Cache, 1000, T0.AddHours(1), [Ev("a", 100, T0.AddHours(1))], NoCreated);
+        store.RecordPass(Cache, 1000, T0.AddHours(2), NoEvictions, [New("a", 100, T0)]).ShouldBe(1);
+
+        store.ReturnsSince(Cache, T0).ShouldHaveSingleItem().GoneFor.ShouldBeGreaterThanOrEqualTo(TimeSpan.Zero);
+    }
+
+    [TestMethod]
+    public void ReturnSeenInTwoPasses_IsMatchedOnce()
+    {
+        var store = Open();
+        store.RecordPass(Cache, 1000, T0, [Ev("a", 100, T0)], NoCreated);
+        store.RecordPass(Cache, 1000, T0.AddHours(1), [Ev("a", 100, T0.AddHours(1))], NoCreated);
+        var back = New("a", 100, T0.AddHours(2));
+        store.RecordPass(Cache, 1000, T0.AddHours(2), NoEvictions, [back]).ShouldBe(1);
+        store.RecordPass(Cache, 1000, T0.AddHours(2).AddSeconds(30), NoEvictions, [back]).ShouldBe(0);
+
+        store.ReturnsSince(Cache, T0).Count.ShouldBe(1);
     }
 
     [TestMethod]
@@ -135,6 +170,23 @@ public class ChurnStoreTests
         store.RecordPass(Cache, 1_000_000, T0, evictions, NoCreated);
         sw.Stop();
         sw.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(5));
+    }
+
+    [TestMethod]
+    [DataRow(typeof(DllNotFoundException))]
+    [DataRow(typeof(BadImageFormatException))]
+    [DataRow(typeof(TypeInitializationException))]
+    public void NativeLoadFailure_LeavesTheStoreInert(Type failure)
+    {
+        Exception ex = failure == typeof(TypeInitializationException)
+            ? new TypeInitializationException("Microsoft.Data.Sqlite.SqliteConnection", new DllNotFoundException("e_sqlite3"))
+            : (Exception)Activator.CreateInstance(failure, "e_sqlite3")!;
+
+        _store = new ChurnStore(NullLogger.Instance, _db, _ => throw ex);
+        _store.RecordPass(Cache, 1000, T0, [Ev("a", 1, T0)], NoCreated).ShouldBe(0);
+        _store.LastPassUtc(Cache).ShouldBeNull();
+        _store.ReturnsSince(Cache, T0).ShouldBeEmpty();
+        Should.NotThrow(() => _store.Prune(T0));
     }
 
     [TestMethod]
