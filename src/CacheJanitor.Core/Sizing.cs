@@ -5,6 +5,7 @@ public enum SizingVerdict
 {
     /// <summary>Too little history has been recorded to judge; see <see cref="SizingAdvice.RecordingSinceUtc"/>.</summary>
     NotEnoughHistory,
+    /// <summary>The limit suits the cache: neither too small nor worth shrinking.</summary>
     AboutRight,
     /// <summary>Entries are evicted and fetched again within days often enough that a larger limit would pay off.</summary>
     TooSmall,
@@ -15,6 +16,7 @@ public enum SizingVerdict
 /// <summary>Sizing advice for one cache, estimated from its eviction and return history and its current contents.</summary>
 public sealed class SizingAdvice
 {
+    /// <summary>The judgement of this cache's size limit.</summary>
     public SizingVerdict Verdict { get; set; }
 
     /// <summary>The recommended size limit for <see cref="SizingVerdict.TooSmall"/> and <see cref="SizingVerdict.CouldBeSmaller"/>; otherwise null.</summary>
@@ -50,7 +52,7 @@ public sealed class SizingAdvice
     /// <summary>True when <see cref="SizingVerdict.CouldBeSmaller"/> would apply but is not offered because NTFS last-access updates are off.</summary>
     public bool ShrinkWithheld { get; set; }
 
-    /// <summary>Estimated weekly thrash at limits from about half to about twice the current one, in ascending order of limit.</summary>
+    /// <summary>Estimated weekly thrash at limits from about half to about twice the current one, or to just past <see cref="SuggestedMaxBytes"/> when that is higher, in ascending order of limit.</summary>
     public List<SizingPoint> Curve { get; set; } = new();
 
     /// <summary>The entries with the most re-downloaded bytes over the last 30 days, largest first, at most ten.</summary>
@@ -60,7 +62,10 @@ public sealed class SizingAdvice
 /// <summary>One point of the what-if curve: estimated weekly thrash at a given size limit.</summary>
 public sealed class SizingPoint
 {
+    /// <summary>The size limit this point estimates for.</summary>
     public long MaxBytes { get; set; }
+
+    /// <summary>Estimated re-downloaded bytes per week at <see cref="MaxBytes"/>.</summary>
     public long WeeklyThrashBytes { get; set; }
 
     /// <summary>False when the estimate goes beyond the recorded evidence; such points are drawn dashed.</summary>
@@ -70,6 +75,7 @@ public sealed class SizingPoint
 /// <summary>An entry that was evicted and fetched again in the last 30 days.</summary>
 public sealed class ReturnedEntry
 {
+    /// <summary>The entry's path relative to the cache folder.</summary>
     public string Entry { get; set; } = "";
 
     /// <summary>Size of the entry at its most recent return.</summary>

@@ -141,7 +141,7 @@ The service records every eviction in `churn.db` (SQLite) in the data folder, be
 cache. Records are kept for 180 days, and kept when a folder is removed from the config.
 Dry runs record nothing.
 
-An entry that comes back within 7 days of being evicted counts as re-downloaded; one that
+A re-download is an evicted entry that comes back within 7 days of being evicted; one that
 comes back after longer is shown as a return after a break and never counts against the
 limit. Bytes are those that came back, which in `TopLevelEntry` mode can be less than the
 folder that was evicted. For each re-download the service estimates the limit that would have
@@ -150,8 +150,8 @@ kept the entry, from how much was evicted in between.
 Each folder gets one of:
 
 - **Too small** — over the last 30 days, re-downloads that a bigger limit would have avoided
-  total more than 1 GB and 5% of the limit, across at least two different weeks, and at least
-  14 days are recorded. The suggested limit would have avoided 80% of them.
+  total more than 1 GB and 5% of the limit, spread over at least two different 7-day periods
+  that each hold a fifth or more of them, and at least 14 days are recorded. The suggested limit would have avoided 80% of them.
 - **Could be smaller** — at least 90 days are recorded, nothing worth mentioning is being
   re-downloaded, and files untouched for 90 days or more take up at least 20% of the limit.
   Not offered while NTFS last-access tracking is off, because file ages are then unreliable.
