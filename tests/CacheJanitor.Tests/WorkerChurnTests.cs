@@ -40,16 +40,15 @@ public class WorkerChurnTests
         return p;
     }
 
-    private static async Task<DateTime?> WaitForPass(Worker worker, DateTime? after)
+    private static async Task WaitUntil(Func<bool> condition, string what)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (DateTime.UtcNow < deadline)
         {
-            var scan = worker.GetStatus().Caches.FirstOrDefault()?.LastScanUtc;
-            if (scan is not null && (after is null || scan > after)) return scan;
+            if (condition()) return;
             await Task.Delay(50);
         }
-        throw new TimeoutException("No pass completed within 10 seconds.");
+        throw new TimeoutException($"Timed out after 10 seconds waiting for {what}.");
     }
 
     [TestMethod]
@@ -70,12 +69,11 @@ public class WorkerChurnTests
         try
         {
             await worker.StartAsync(CancellationToken.None);
-            var first = await WaitForPass(worker, null);
-            File.Exists(Path.Combine(cache, "a.bin")).ShouldBeFalse();
+            await WaitUntil(() => !File.Exists(Path.Combine(cache, "a.bin")) && worker.GetStatus().Caches[0].Sizing is not null, "the first pass to evict a.bin and publish sizing advice");
 
             MakeFile(cache, "a.bin", 40, TimeSpan.Zero);
             worker.RequestTrim(cache).ShouldBeTrue();
-            await WaitForPass(worker, first);
+            await WaitUntil(() => churn.ReturnsSince(cache, DateTime.MinValue).Count == 1, "the re-created a.bin to be recorded as a return");
 
             var returns = churn.ReturnsSince(cache, DateTime.MinValue);
             returns.Count.ShouldBe(1);
