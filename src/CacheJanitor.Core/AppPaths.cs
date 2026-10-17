@@ -22,4 +22,7 @@ public static class AppPaths
 
     /// <summary>Lifetime counters and size history, kept across service restarts.</summary>
     public static string StatsPath { get; } = Path.Combine(DataDirectory, "stats.json");
+
+    /// <summary>The SQLite log of evictions and returns behind the sizing advice.</summary>
+    public static string ChurnDbPath { get; } = Path.Combine(DataDirectory, "churn.db");
 }
