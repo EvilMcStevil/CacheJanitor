@@ -191,6 +191,17 @@ public sealed class CacheTrimmerTests
     }
 
     [TestMethod]
+    public async Task Profile_HasOneFinalPoint_WhenZeroByteEntriesSortLast()
+    {
+        MakeFile("a.bin", 10, TimeSpan.FromDays(30));
+        MakeFile("b.bin", 20, TimeSpan.FromDays(3));
+        for (int i = 0; i < 150; i++) MakeFile($"empty{i}", 0, TimeSpan.FromSeconds(30));
+        var p = (await Trimmer("1MB").TrimAsync()).Profile;
+        p.Count.ShouldBeLessThanOrEqualTo(100);
+        p.Count(x => x.Bytes == 30 * 1024).ShouldBe(1);
+    }
+
+    [TestMethod]
     public async Task MissingFolder_Throws()
     {
         var t = new CacheTrimmer(new CacheFolderOptions { Path = Path.Combine(_root, "nope"), MaxSize = "1GB" }, NullLogger.Instance);

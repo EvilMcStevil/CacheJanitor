@@ -189,10 +189,11 @@ public sealed class CacheTrimmer
         {
             cumulative += e.Bytes;
             if (now - e.LastUsedUtc < RecentAge) recent += e.Bytes;
-            if (cumulative < nextMark && cumulative < total) continue;
+            if (cumulative < nextMark || cumulative >= total) continue;
             points.Add(new LruPoint(cumulative, recent));
             nextMark = (cumulative / step + 1) * step;
         }
+        points.Add(new LruPoint(total, recent));
         return points;
     }
 
