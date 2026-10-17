@@ -18,8 +18,12 @@ public sealed class Worker : BackgroundService
     /// <summary>A healthy, quiet folder is still rescanned this often so its age statistics stay current.</summary>
     private static readonly TimeSpan MaxIdle = TimeSpan.FromHours(1);
 
+    /// <summary>How often old churn history is pruned.</summary>
+    private static readonly TimeSpan PruneInterval = TimeSpan.FromHours(24);
+
     private readonly IOptionsMonitor<JanitorOptions> _monitor;
     private readonly StatsStore _stats;
+    private readonly ChurnStore _churn;
     private readonly ILoggerFactory _loggers;
     private readonly ILogger _log;
     private readonly SemaphoreSlim _wake = new(0);
@@ -32,10 +36,11 @@ public sealed class Worker : BackgroundService
     private volatile bool _configChanged = true;
     private CancellationToken _stopping;
 
-    public Worker(IOptionsMonitor<JanitorOptions> monitor, StatsStore stats, ILoggerFactory loggers)
+    public Worker(IOptionsMonitor<JanitorOptions> monitor, StatsStore stats, ChurnStore churn, ILoggerFactory loggers)
     {
         _monitor = monitor;
         _stats = stats;
+        _churn = churn;
         _loggers = loggers;
         _log = loggers.CreateLogger<Worker>();
     }
@@ -56,8 +61,15 @@ public sealed class Worker : BackgroundService
 
         try
         {
+            var nextPrune = DateTime.UtcNow;
             while (!stoppingToken.IsCancellationRequested)
             {
+                if (DateTime.UtcNow >= nextPrune)
+                {
+                    _churn.Prune(DateTime.UtcNow);
+                    nextPrune = DateTime.UtcNow + PruneInterval;
+                }
+
                 if (_configChanged)
                 {
                     // Editors and the config reloader often fire twice for one save; let them settle.
@@ -175,7 +187,7 @@ public sealed class Worker : BackgroundService
                     continue;
                 }
                 existing?.Dispose();
-                next[key] = new WatchedCache(c, interval, debounce, _stats, _loggers.CreateLogger($"CacheJanitor[{key}]"), _stopping);
+                next[key] = new WatchedCache(c, interval, debounce, _stats, _churn, () => _lastAccessEnabled, _loggers.CreateLogger($"CacheJanitor[{key}]"), _stopping);
                 _log.LogInformation("Managing {Path}: max {Max}, unit {Unit}, min age {MinAge} min{Disabled}.",
                     key, SizeParser.Format(c.MaxBytes), c.Unit, c.MinAgeMinutes, c.Enabled ? "" : ", eviction OFF");
             }
@@ -209,10 +221,15 @@ public sealed class Worker : BackgroundService
 
     private sealed class WatchedCache : IDisposable
     {
+        /// <summary>Sizing advice is recomputed at most this often unless a pass matched returns.</summary>
+        private static readonly TimeSpan SizingRefresh = TimeSpan.FromMinutes(15);
+
         private readonly CacheFolderOptions _options;
         private readonly string _signature;
         private readonly TimeSpan _debounce;
         private readonly StatsStore _stats;
+        private readonly ChurnStore _churn;
+        private readonly Func<bool?> _lastAccessEnabled;
         private readonly ILogger _log;
         private readonly CancellationTokenSource _cts;
         private readonly Timer _debounceTimer;
@@ -229,13 +246,17 @@ public sealed class Worker : BackgroundService
         private CacheTrimmer.Result? _last;
         private DateTime? _lastScanUtc;
         private DateTime _nextScanUtc = DateTime.UtcNow;
+        private SizingAdvice? _sizing;
+        private DateTime? _sizingUtc;
 
-        public WatchedCache(CacheFolderOptions options, TimeSpan interval, TimeSpan debounce, StatsStore stats, ILogger log, CancellationToken stopping)
+        public WatchedCache(CacheFolderOptions options, TimeSpan interval, TimeSpan debounce, StatsStore stats, ChurnStore churn, Func<bool?> lastAccessEnabled, ILogger log, CancellationToken stopping)
         {
             _options = options;
             _signature = Signature(options, debounce);
             _debounce = debounce;
             _stats = stats;
+            _churn = churn;
+            _lastAccessEnabled = lastAccessEnabled;
             _log = log;
             Interval = interval;
             _cts = CancellationTokenSource.CreateLinkedTokenSource(stopping);
@@ -360,7 +381,8 @@ public sealed class Worker : BackgroundService
                 Volatile.Write(ref _waiting, 0);
                 _changedSinceScan = false;
                 var started = DateTime.UtcNow;
-                var r = await _trimmer!.TrimAsync(_cts.Token);
+                var since = _churn.LastPassUtc(Path);
+                var r = await _trimmer!.TrimAsync(_cts.Token, since);
                 _last = r;
                 _lastScanUtc = DateTime.UtcNow;
                 _nextScanUtc = _lastScanUtc.Value + Interval;
@@ -369,6 +391,15 @@ public sealed class Worker : BackgroundService
                     : r.BytesAfter > _options.MaxBytes ? CacheState.OverLimit
                     : CacheState.Ok;
                 _stats.Record(_options.Path, r, started);
+                int matched = _churn.RecordPass(Path, _options.MaxBytes, started, r.Evictions, r.Created);
+                if (matched > 0 || _sizingUtc is null || DateTime.UtcNow - _sizingUtc >= SizingRefresh)
+                {
+                    var now = DateTime.UtcNow;
+                    _sizing = SizingAnalyzer.Analyze(new SizingInput(now, _options.MaxBytes, r.BytesAfter,
+                        _churn.RecordingSinceUtc(Path), _churn.ReturnsSince(Path, now.AddDays(-30)),
+                        r.UntouchedBytes, r.Profile, _lastAccessEnabled()));
+                    _sizingUtc = now;
+                }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -424,6 +455,7 @@ public sealed class Worker : BackgroundService
                 ChangesLastMinute = _changes.Count(t => t > cutoff),
                 AgeBytes = r?.AgeBytes ?? new long[AgeBuckets.Count],
                 AgeEntries = r?.AgeEntries ?? new long[AgeBuckets.Count],
+                Sizing = _sizing,
             };
         }
 

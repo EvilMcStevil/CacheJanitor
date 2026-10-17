@@ -48,6 +48,7 @@ builder.Services.AddWindowsService(o => o.ServiceName = AppPaths.ServiceName);
 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(20));
 builder.Services.Configure<JanitorOptions>(builder.Configuration.GetSection(ConfigFile.SectionName));
 builder.Services.AddSingleton<StatsStore>();
+builder.Services.AddSingleton<ChurnStore>();
 builder.Services.AddSingleton<Worker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Worker>());
 builder.Services.AddHostedService<PipeServer>();
