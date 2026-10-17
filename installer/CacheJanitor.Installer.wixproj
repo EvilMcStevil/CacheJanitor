@@ -1,0 +1,24 @@
+<Project Sdk="WixToolset.Sdk/6.0.1">
+
+  <PropertyGroup>
+    <OutputName>CacheJanitor-$(Version)-x64</OutputName>
+    <Platform>x64</Platform>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <DefineConstants>ProductVersion=$(Version)</DefineConstants>
+    <IsPackable>false</IsPackable>
+    <!-- WIX1149: the core ServiceConfig element (MsiServiceConfig) is needed for delayed start and the
+         failure-actions flag, which util:ServiceConfig cannot set. -->
+    <SuppressSpecificWarnings>1149</SuppressSpecificWarnings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="6.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Publish="true" builds each app's self-contained single-file publish output and binds the package to it. -->
+    <ProjectReference Include="..\src\CacheJanitor\CacheJanitor.csproj" Publish="true" />
+    <ProjectReference Include="..\src\CacheJanitor.Tray\CacheJanitor.Tray.csproj" Publish="true" />
+  </ItemGroup>
+
+</Project>

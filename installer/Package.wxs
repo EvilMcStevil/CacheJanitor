@@ -1,0 +1,108 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <?define ServiceName = "CacheJanitor" ?>
+  <!-- The self-contained single-file publish output of each app (bind paths added by the Publish="true" references). -->
+  <?define ServiceDir = "!(bindpath.CacheJanitor)" ?>
+  <?define TrayDir = "!(bindpath.CacheJanitor.Tray)" ?>
+
+  <Package Name="CacheJanitor"
+           Manufacturer="Steve Brain"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="4552B0F6-3BDF-49BF-A326-42962E395FA9"
+           Scope="perMachine"
+           InstallerVersion="500">
+
+    <SummaryInformation Description="Keeps cache folders under a size limit by evicting least recently used files." />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="CacheJanitor.ico" SourceFile="..\assets\CacheJanitor.ico" />
+    <Property Id="ARPPRODUCTICON" Value="CacheJanitor.ico" />
+
+    <!-- Close a running tray app before its exe is replaced or removed. -->
+    <util:CloseApplication Id="CloseTray" Target="CacheJanitorTray.exe" CloseMessage="yes" TerminateProcess="1" RebootPrompt="no" />
+
+    <Feature Id="Service" Title="CacheJanitor service" AllowAbsent="no"
+             Description="The Windows service that trims the configured cache folders.">
+      <ComponentGroupRef Id="ServiceComponents" />
+    </Feature>
+
+    <Feature Id="Tray" Title="Tray app"
+             Description="A notification-area icon and dashboard for the fill levels, statistics and settings of each folder, started at sign-in for every user.">
+      <ComponentGroupRef Id="TrayComponents" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="CacheJanitor" />
+    </StandardDirectory>
+
+    <!-- %ProgramData%\CacheJanitor: config.json and stats.json. SYSTEM and Administrators may change it; users only read. -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DATAFOLDER" Name="CacheJanitor" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder" />
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ServiceComponents" Directory="INSTALLFOLDER">
+      <Component Id="ServiceExe" Bitness="always64">
+        <File Id="CacheJanitor.exe" Source="$(var.ServiceDir)CacheJanitor.exe" KeyPath="yes" />
+
+        <ServiceInstall Id="CacheJanitorService"
+                        Name="$(var.ServiceName)"
+                        DisplayName="Cache Janitor"
+                        Description="Keeps configured cache folders under a size limit by deleting the least recently used files."
+                        Type="ownProcess"
+                        Start="auto"
+                        ErrorControl="normal"
+                        Vital="yes">
+          <!-- Treat a non-zero exit code as a failure too, so the recovery actions below restart it. -->
+          <ServiceConfig DelayedAutoStart="yes" FailureActionsWhen="failedToStopOrReturnedError" OnInstall="yes" OnReinstall="yes" />
+          <util:ServiceConfig FirstFailureActionType="restart"
+                              SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart"
+                              RestartServiceDelayInSeconds="60"
+                              ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="CacheJanitorControl" Name="$(var.ServiceName)" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+
+      <Component Id="ServiceSettings" Bitness="always64">
+        <File Id="appsettings.json" Source="$(var.ServiceDir)appsettings.json" KeyPath="yes" />
+      </Component>
+
+      <!-- Event Log source, so the service's entries render without "description cannot be found". -->
+      <Component Id="EventSource" Bitness="always64">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\CacheJanitor" Name="EventSource" Value="1" Type="integer" KeyPath="yes" />
+        <util:EventSource Log="Application" Name="$(var.ServiceName)"
+                          EventMessageFile="[WindowsFolder]Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll" />
+      </Component>
+
+      <Component Id="DataFolder" Directory="DATAFOLDER" Permanent="yes" Bitness="always64">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\CacheJanitor" Name="DataFolder" Value="[DATAFOLDER]" Type="string" KeyPath="yes" />
+        <CreateFolder>
+          <PermissionEx Sddl="O:BAG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)" />
+        </CreateFolder>
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="TrayComponents" Directory="INSTALLFOLDER">
+      <Component Id="TrayExe" Bitness="always64">
+        <File Id="CacheJanitorTray.exe" Source="$(var.TrayDir)CacheJanitorTray.exe" KeyPath="yes">
+          <Shortcut Id="TrayStartMenu" Directory="ProgramMenuFolder" Name="CacheJanitor" Description="Cache folder sizes, statistics and settings"
+                    WorkingDirectory="INSTALLFOLDER" Icon="CacheJanitor.ico" Advertise="yes" />
+        </File>
+        <!-- Start in the notification area at every user's sign-in. -->
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run" Name="CacheJanitorTray"
+                       Value="&quot;[#CacheJanitorTray.exe]&quot; --background" Type="string" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>
