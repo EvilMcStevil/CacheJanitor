@@ -70,6 +70,7 @@ running. Hover for every folder's fill level; click for the dashboard:
   and trim target, and the age distribution of what's in the folder.
 - **Activity** — bytes added vs. evicted per hour (or per 6 h), scan timing, watcher
   activity, entries skipped because they were in use, and the latest evictions.
+- **Sizing** — whether each limit looks right; see "Sizing advice" below.
 - **Folder settings** / **Service settings** — everything in `config.json`, with Add folder,
   Remove and Browse. Saving asks for administrator approval (UAC) because the file decides
   what LocalSystem deletes; the service applies it within a couple of seconds.
@@ -132,6 +133,36 @@ skipped; the rest keep running.
 sets this, and the service re-applies it at every start), since whoever can write
 `config.json` decides what the service deletes. `stats.json` beside it holds the lifetime
 totals and 7 days of history the tray charts.
+
+## Sizing advice
+
+The service records every eviction in `churn.db` (SQLite) in the data folder, beside
+`stats.json` and `config.json`, and notices when an evicted entry turns up again in the same
+cache. Records are kept for 180 days, and kept when a folder is removed from the config.
+Dry runs record nothing.
+
+An entry that comes back within 7 days of being evicted counts as re-downloaded; one that
+comes back after longer is shown as a return after a break and never counts against the
+limit. Bytes are those that came back, which in `TopLevelEntry` mode can be less than the
+folder that was evicted. For each re-download the service estimates the limit that would have
+kept the entry, from how much was evicted in between.
+
+Each folder gets one of:
+
+- **Too small** — over the last 30 days, re-downloads that a bigger limit would have avoided
+  total more than 1 GB and 5% of the limit, across at least two different weeks, and at least
+  14 days are recorded. The suggested limit would have avoided 80% of them.
+- **Could be smaller** — at least 90 days are recorded, nothing worth mentioning is being
+  re-downloaded, and files untouched for 90 days or more take up at least 20% of the limit.
+  Not offered while NTFS last-access tracking is off, because file ages are then unreliable.
+- **About right**, or **not enough history yet**.
+
+The folder list and tray tooltip show the verdict, Overview shows a banner when a folder is
+too small, and the Sizing tab has the figures: re-downloaded bytes (small files under 1 MB
+counted separately), typical time away, returns after a break, untouched bytes, a chart of
+weekly re-downloads at other limits (dashed where it is a guess), and the ten entries
+re-downloaded most. These are estimates from what was observed; the tray never changes a
+limit.
 
 ## Without a service
 
