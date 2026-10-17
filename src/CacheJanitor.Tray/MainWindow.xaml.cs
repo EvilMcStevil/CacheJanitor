@@ -118,6 +118,7 @@ public partial class MainWindow : Window
         var s = item?.Status;
         SizeChart.SetData(s?.History ?? [], item?.LimitBytes ?? 0, item?.TargetBytes ?? 0, _range);
         ChurnChart.SetData(s?.History ?? [], _range);
+        SizingChart.SetData(s?.Sizing?.Curve ?? [], item?.LimitBytes ?? 0, s?.Sizing?.SuggestedMaxBytes);
         AgeChart.SetData(s?.AgeBytes ?? [], s?.AgeEntries ?? [], s?.Unit == EvictionUnit.TopLevelEntry);
     }
 

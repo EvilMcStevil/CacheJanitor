@@ -181,6 +181,54 @@ public sealed class CacheItem : Observable
     public string SuggestedText => Sizing?.SuggestedMaxBytes is { } b ? Fmt.Size(b) : "—";
     public string SuggestedSub => LimitBytes > 0 ? $"now {Fmt.Size(LimitBytes)}" : "";
 
+    public bool HasSizing => Sizing is not null;
+
+    public string VerdictTitle => Sizing is not { } z ? "" : z.Verdict switch
+    {
+        SizingVerdict.TooSmall when z.SuggestedMaxBytes is { } b => $"Raise the limit to about {Fmt.Size(b)}",
+        SizingVerdict.TooSmall => "The limit is too small",
+        SizingVerdict.CouldBeSmaller when z.SuggestedMaxBytes is { } b => $"The limit could come down to about {Fmt.Size(b)}",
+        SizingVerdict.CouldBeSmaller => "The limit could be smaller",
+        SizingVerdict.AboutRight => "The limit looks about right",
+        _ => "Not enough history yet",
+    };
+
+    public string VerdictDetail => Sizing is not { } z ? "" : z.Verdict switch
+    {
+        SizingVerdict.TooSmall => $"{Fmt.Size(z.ThrashBytes)} was evicted and then downloaded again within a week, over the last 30 days.",
+        SizingVerdict.CouldBeSmaller => $"{Fmt.Size(z.UntouchedBytes)} has not been used for 90 days or more.",
+        SizingVerdict.AboutRight => "Little that is evicted comes back, and little of the cache sits unused.",
+        _ => RecordingSinceText,
+    };
+
+    public string RecordingSinceText => Sizing is { } z && z.RecordingSinceUtc != default
+        ? $"Recording evictions since {z.RecordingSinceUtc.ToLocalTime():d MMM}. Advice needs at least 14 days."
+        : "";
+
+    public string SmallThrashText => Sizing is { } z ? Fmt.Size(z.SmallThrashBytes) : "—";
+    public string SmallThrashSub => Sizing is { } z ? $"files under 1 MB · {Fmt.Count(z.SmallThrashEntries)} entries" : "";
+
+    public string GoneText => Sizing?.MedianGoneHours is { } h ? Fmt.Duration(TimeSpan.FromHours(h)) : "—";
+    public string BreakText => Sizing is { } z ? Fmt.Size(z.BreakBytes) : "—";
+    public string UntouchedText => Sizing is { } z ? Fmt.Size(z.UntouchedBytes) : "—";
+
+    public IReadOnlyList<string> SizingNotes
+    {
+        get
+        {
+            var notes = new List<string>();
+            if (Sizing is not { } z) return notes;
+            if (z.LastAccessUnreliable)
+                notes.Add("This folder's last-access times look unreliable, so the figures for unused and returning files may be off.");
+            if (z.ShrinkWithheld)
+                notes.Add("A smaller limit is not suggested because Windows is not recording reads, so unused files cannot be told apart from busy ones.");
+            return notes;
+        }
+    }
+
+    public IReadOnlyList<ReturnedEntry> TopReturned => Sizing?.TopReturned ?? [];
+    public IEnumerable<ReturnedRow> TopReturnedRows => TopReturned.Select(r => new ReturnedRow(r));
+
     // ---- activity ----
 
     public string LastScanText => Status?.LastScanUtc is { } t ? $"{Fmt.Ago(t)} (took {(Status.LastScanSeconds < 1 ? $"{Status.LastScanSeconds * 1000:0} ms" : $"{Status.LastScanSeconds.ToString("0.#", CultureInfo.CurrentCulture)} s")})" : "not yet";
@@ -193,6 +241,13 @@ public sealed class CacheItem : Observable
         : "—";
 
     public IEnumerable<EvictionRow> RecentEvictions => (Status?.RecentEvictions ?? []).Select(e => new EvictionRow(e));
+}
+
+public sealed class ReturnedRow(ReturnedEntry r)
+{
+    public string Entry => r.Entry;
+    public string Size => Fmt.Size(r.Bytes);
+    public string Returns => Fmt.Count(r.Returns);
 }
 
 public sealed class EvictionRow(EvictionRecord e)

@@ -348,6 +348,83 @@
         </TabItem>
 
         <TabItem Header="Sizing" x:Name="SizingTab" DataContext="{Binding Selected}" IsEnabled="{Binding DataContext.HasSelection, ElementName=Tabs}">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,12,4,0">
+            <StackPanel>
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="{Binding VerdictTitle}" Style="{StaticResource CardTitle}" />
+                  <TextBlock Text="{Binding VerdictDetail}" TextWrapping="Wrap" Style="{StaticResource Secondary}" TextTrimming="None" />
+                  <ItemsControl ItemsSource="{Binding SizingNotes}" Margin="0,6,0,0">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding}" TextWrapping="Wrap" Style="{StaticResource Hint}" TextTrimming="None" Margin="0,2,0,0" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+
+              <UniformGrid Columns="5" Margin="0,0,-12,0">
+                <Border Style="{StaticResource Tile}" ToolTip="Bytes evicted and then downloaded again within a week, over the last 30 days.">
+                  <StackPanel>
+                    <TextBlock Text="Re-downloaded" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding ReDownloadedText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="{Binding ReDownloadedSub}" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" ToolTip="The part of the re-downloaded total made up of files under 1 MB.">
+                  <StackPanel>
+                    <TextBlock Text="Of which small files" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding SmallThrashText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="{Binding SmallThrashSub}" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" ToolTip="The median time between an entry being evicted and downloaded again.">
+                  <StackPanel>
+                    <TextBlock Text="Typical time away" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding GoneText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="before it came back" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" ToolTip="Bytes that came back after more than a week away. A larger limit would not have kept these.">
+                  <StackPanel>
+                    <TextBlock Text="Came back after a break" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding BreakText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="gone more than a week" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" ToolTip="Bytes in the cache that have not been used for 90 days or more.">
+                  <StackPanel>
+                    <TextBlock Text="Untouched 90+ days" Style="{StaticResource TileLabel}" />
+                    <TextBlock Text="{Binding UntouchedText}" Style="{StaticResource TileValue}" />
+                    <TextBlock Text="in the cache now" Style="{StaticResource Secondary}" />
+                  </StackPanel>
+                </Border>
+              </UniformGrid>
+
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="What a different limit would have cost" Style="{StaticResource CardTitle}" />
+                  <charts:SizingChart x:Name="SizingChart" Height="230" />
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="Most re-downloaded" Style="{StaticResource CardTitle}" />
+                  <ListView ItemsSource="{Binding TopReturnedRows}" MaxHeight="340" BorderThickness="0" Background="Transparent">
+                    <ListView.View>
+                      <GridView>
+                        <GridViewColumn Header="Entry" DisplayMemberBinding="{Binding Entry}" Width="330" />
+                        <GridViewColumn Header="Size" DisplayMemberBinding="{Binding Size}" Width="90" />
+                        <GridViewColumn Header="Returns" DisplayMemberBinding="{Binding Returns}" Width="80" />
+                      </GridView>
+                    </ListView.View>
+                  </ListView>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
         </TabItem>
 
         <TabItem Header="Folder settings" x:Name="SettingsTab" DataContext="{Binding Selected}" IsEnabled="{Binding DataContext.HasSelection, ElementName=Tabs}">

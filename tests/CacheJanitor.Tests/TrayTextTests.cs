@@ -63,4 +63,24 @@ public class TrayTextTests
         item.ShowTooSmallBanner.ShouldBeFalse();
         item.SuggestedText.ShouldBe("—");
     }
+
+    private static CacheItem ItemWith(SizingAdvice advice) =>
+        new(new CacheFolderOptions { Path = @"D:\c", MaxSize = "20GB" }) { Status = new CacheStatus { Sizing = advice } };
+
+    [TestMethod]
+    public void SizingTab_Text_FollowsVerdict()
+    {
+        ItemWith(new SizingAdvice { Verdict = SizingVerdict.TooSmall, SuggestedMaxBytes = 25 * Gb }).VerdictTitle.ShouldBe("Raise the limit to about 25 GB");
+        ItemWith(new SizingAdvice { Verdict = SizingVerdict.CouldBeSmaller, SuggestedMaxBytes = 14 * Gb }).VerdictTitle.ShouldBe("The limit could come down to about 14 GB");
+        ItemWith(new SizingAdvice { Verdict = SizingVerdict.AboutRight }).VerdictTitle.ShouldBe("The limit looks about right");
+
+        var since = new DateTime(2026, 10, 3, 12, 0, 0, DateTimeKind.Utc);
+        var early = ItemWith(new SizingAdvice { Verdict = SizingVerdict.NotEnoughHistory, RecordingSinceUtc = since });
+        early.VerdictTitle.ShouldBe("Not enough history yet");
+        early.RecordingSinceText.ShouldContain($"{since.ToLocalTime():d MMM}");
+
+        ItemWith(new SizingAdvice { LastAccessUnreliable = true }).SizingNotes.ShouldContain(n => n.Contains("last-access times"));
+        ItemWith(new SizingAdvice { ShrinkWithheld = true }).SizingNotes.ShouldContain(n => n.Contains("not recording reads"));
+        ItemWith(new SizingAdvice { Verdict = SizingVerdict.AboutRight }).SizingNotes.ShouldBeEmpty();
+    }
 }
