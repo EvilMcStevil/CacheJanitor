@@ -54,7 +54,8 @@ public sealed partial class TrayIcon : IDisposable
 
         double worst = 0;
         bool failing = false;
-        var lines = new List<string> { "CacheJanitor" };
+        var lines = new List<string>();
+        var folders = new List<(string Name, string Usage, string? Tag)>();
         if (status is null)
         {
             lines.Add(poller.Service switch
@@ -77,19 +78,50 @@ public sealed partial class TrayIcon : IDisposable
                 worst = Math.Max(worst, f);
                 failing |= c.State is CacheState.Error or CacheState.OverLimit;
                 var name = string.IsNullOrWhiteSpace(c.Name) ? Path.GetFileName(c.Path) : c.Name;
-                lines.Add(c.State == CacheState.Error ? $"{name}: error" : $"{name}: {Fmt.Percent(f)} of {Fmt.Size(c.MaxBytes)}");
+                folders.Add((name, c.State == CacheState.Error ? "error" : $"{Fmt.Percent(f)} of {Fmt.Size(c.MaxBytes)}", c.State == CacheState.Error ? null : AdviceTag(c.Sizing)));
                 Notify(c, name);
             }
         }
 
-        // NotifyIcon.Text is limited to 127 characters.
-        var text = string.Join("\n", lines);
-        _icon.Text = text.Length <= 127 ? text : text[..124] + "…";
+        const string Header = "CacheJanitor";
+        _icon.Text = folders.Count > 0
+            ? Header + "\n" + TooltipText(folders, MaxTooltipLength - Header.Length - 1)
+            : string.Join("\n", lines.Prepend(Header));
 
         Color fill = failing || worst > 1 ? Color.FromArgb(0xD0, 0x3B, 0x3B)
             : worst >= 0.9 ? Color.FromArgb(0xFA, 0xB2, 0x19)
             : Color.White;
         SetIcon(status is null ? null : Math.Clamp(worst, 0, 1), fill);
+    }
+
+    /// <summary>NotifyIcon.Text is limited to 127 characters.</summary>
+    private const int MaxTooltipLength = 127;
+
+    /// <summary>The short sizing hint shown beside a folder in the tooltip, e.g. "↑ 25 GB"; null when there is no suggestion.</summary>
+    internal static string? AdviceTag(SizingAdvice? s) => s switch
+    {
+        { Verdict: SizingVerdict.TooSmall, SuggestedMaxBytes: { } b } => $"↑ {Fmt.Size(b)}",
+        { Verdict: SizingVerdict.CouldBeSmaller, SuggestedMaxBytes: { } b } => $"↓ {Fmt.Size(b)}",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Joins one line per folder, "name: usage" with an optional " · tag". When the result is too long, every
+    /// name is shortened to a common length (no fewer than 6 characters plus an ellipsis); if that is still too
+    /// long the text is cut.
+    /// </summary>
+    internal static string TooltipText(IReadOnlyList<(string Name, string Usage, string? Tag)> lines, int max = MaxTooltipLength)
+    {
+        string Build(int nameLength) => string.Join("\n", lines.Select(l =>
+        {
+            var name = l.Name.Length > nameLength ? l.Name[..nameLength] + "…" : l.Name;
+            return l.Tag is null ? $"{name}: {l.Usage}" : $"{name}: {l.Usage} · {l.Tag}";
+        }));
+
+        var text = Build(int.MaxValue);
+        for (int n = lines.Count == 0 ? 0 : lines.Max(l => l.Name.Length) - 1; text.Length > max && n >= 6; n--)
+            text = Build(n);
+        return text.Length <= max ? text : text[..(max - 3)] + "…";
     }
 
     /// <summary>Shows a notification when a folder newly goes over its limit or starts failing.</summary>

@@ -109,6 +109,21 @@ public sealed class CacheItem : Observable
         _ => "",
     };
 
+    public SizingAdvice? Sizing => Status?.Sizing;
+
+    public string AdviceText => Sizing?.Verdict switch
+    {
+        SizingVerdict.TooSmall => "↑ Too small",
+        SizingVerdict.CouldBeSmaller => "↓ Could be smaller",
+        SizingVerdict.AboutRight => "✓ About right",
+        _ => "",
+    };
+
+    public Level AdviceLevel => Sizing?.Verdict == SizingVerdict.TooSmall ? Level.Warning : Level.Neutral;
+
+    /// <summary>The state line, or the sizing advice in its place when the state is plain OK or Near limit.</summary>
+    public bool ShowsAdvice => AdviceText.Length > 0 && StateText is "OK" or "Near limit";
+
     public string StateGlyph => Status?.State switch
     {
         CacheState.Ok when Fraction < 0.9 => "",

@@ -4,6 +4,8 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <IsPackable>false</IsPackable>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,10 +18,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\CacheJanitor\CacheJanitor.csproj" />
     <ProjectReference Include="..\..\src\CacheJanitor.Core\CacheJanitor.Core.csproj" />
+    <ProjectReference Include="..\..\src\CacheJanitor.Tray\CacheJanitor.Tray.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+    <Using Include="System.IO" />
     <Using Include="Shouldly" />
   </ItemGroup>
 

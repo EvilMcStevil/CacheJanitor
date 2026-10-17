@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CacheJanitor.Core\CacheJanitor.Core.csproj" />
+    <InternalsVisibleTo Include="CacheJanitor.Tests" />
   </ItemGroup>
 
   <ItemGroup>

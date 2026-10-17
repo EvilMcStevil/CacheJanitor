@@ -132,7 +132,22 @@
                     <TextBlock DockPanel.Dock="Left" Style="{StaticResource Glyph}" Text="{Binding StateGlyph}" FontSize="12" Margin="0,0,6,0"
                                Foreground="{Binding Level, Converter={StaticResource LevelBrush}}" />
                     <TextBlock DockPanel.Dock="Right" Text="{Binding UsageText}" Style="{StaticResource Secondary}" Margin="8,0,0,0" />
-                    <TextBlock Text="{Binding StateText}" Style="{StaticResource Secondary}" ToolTip="{Binding StateText}" />
+                    <Grid>
+                      <TextBlock Text="{Binding StateText}" ToolTip="{Binding StateText}">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding ShowsAdvice}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </TextBlock.Style>
+                      </TextBlock>
+                      <TextBlock Text="{Binding AdviceText}" Style="{StaticResource Secondary}" ToolTip="{Binding AdviceText}"
+                                 Foreground="{Binding AdviceLevel, Converter={StaticResource LevelBrush}}"
+                                 Visibility="{Binding ShowsAdvice, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
                   </DockPanel>
                 </StackPanel>
               </DataTemplate>
