@@ -68,6 +68,9 @@ public sealed class CacheStatus
     public CacheTotals Totals { get; set; } = new();
     public List<HistorySample> History { get; set; } = new();
     public List<EvictionRecord> RecentEvictions { get; set; } = new();
+
+    /// <summary>Sizing advice from the recorded churn history; null until it has been computed.</summary>
+    public SizingAdvice? Sizing { get; set; }
 }
 
 /// <summary>Counters that accumulate across passes and service restarts.</summary>
