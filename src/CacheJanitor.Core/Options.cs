@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace CacheJanitor;
@@ -26,6 +27,12 @@ public sealed class CacheFolderOptions
 {
     public string Path { get; set; } = "";
 
+    /// <summary>Optional display name; the path is shown when empty.</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>When false the folder is still measured but nothing is evicted from it.</summary>
+    public bool Enabled { get; set; } = true;
+
     /// <summary>Max size, e.g. "50GB", "750MB", "1.5TB" or a plain byte count. Units are binary (1GB = 1024^3).</summary>
     public string MaxSize { get; set; } = "";
 
@@ -40,21 +47,40 @@ public sealed class CacheFolderOptions
     /// <summary>Glob patterns (relative to Path, * and ? and **) that are never evicted, e.g. "**/*.lock".</summary>
     public List<string> Exclude { get; set; } = new();
 
+    [JsonIgnore]
     public long MaxBytes => SizeParser.Parse(MaxSize);
+
+    [JsonIgnore]
     public long TargetBytes => (long)(MaxBytes * Math.Clamp(TrimToPercent, 1, 100) / 100.0);
+
+    [JsonIgnore]
+    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Path : Name;
 }
 
 public static class SizeParser
 {
     private static readonly Regex Pattern = new(@"^\s*([\d.]+)\s*([KMGT]?)(I?B)?\s*$", RegexOptions.IgnoreCase);
 
+    public static bool TryParse(string? text, out long bytes)
+    {
+        try
+        {
+            bytes = Parse(text ?? "");
+            return bytes > 0;
+        }
+        catch (FormatException)
+        {
+            bytes = 0;
+            return false;
+        }
+    }
+
     public static long Parse(string text)
     {
         var m = Pattern.Match(text ?? "");
-        if (!m.Success)
+        if (!m.Success || !double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
             throw new FormatException($"Can't parse size '{text}'. Use e.g. 50GB, 750MB, 1.5TB or a byte count.");
 
-        var number = double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
         var multiplier = m.Groups[2].Value.ToUpperInvariant() switch
         {
             "K" => 1L << 10,

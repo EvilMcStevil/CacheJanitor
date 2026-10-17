@@ -10,28 +10,34 @@ namespace CacheJanitor;
 /// </summary>
 public static class LastAccessCheck
 {
-    public static void WarnIfDisabled(ILogger log)
+    /// <summary>Whether NTFS last-access updates are on, or null if the setting could not be read.</summary>
+    public static bool? IsEnabled()
     {
-        if (!OperatingSystem.IsWindows()) return;
         try
         {
             using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\FileSystem");
             var raw = key?.GetValue("NtfsDisableLastAccessUpdate");
-            if (raw is null) return;
+            if (raw is null) return true;
             uint value = unchecked((uint)Convert.ToInt32(raw));
             // Low bit set = updates disabled (0x1 user-managed, 0x80000001 system-managed).
-            if ((value & 1) == 1)
-            {
-                log.LogWarning(
-                    "NTFS last-access updates are DISABLED (NtfsDisableLastAccessUpdate=0x{Value:X8}). " +
-                    "Reads won't refresh a file's age, so eviction is by download/write time, not true LRU. " +
-                    "To enable, run as admin: fsutil behavior set disablelastaccess 0 (then reboot).",
-                    value);
-            }
+            return (value & 1) == 0;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            log.LogDebug(ex, "Could not read last-access setting.");
+            return null;
         }
+    }
+
+    public static bool? WarnIfDisabled(ILogger log)
+    {
+        var enabled = IsEnabled();
+        if (enabled == false)
+        {
+            log.LogWarning(
+                "NTFS last-access updates are DISABLED. " +
+                "Reads won't refresh a file's age, so eviction is by download/write time, not true LRU. " +
+                "To enable, run as admin: fsutil behavior set disablelastaccess 0 (then reboot).");
+        }
+        return enabled;
     }
 }

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 // Usage:
 //   CacheJanitor.exe                       run as a Windows service (or in the console when started by hand)
-//   CacheJanitor.exe once [--dry-run]      one pass over every cache in appsettings.json, then exit
+//   CacheJanitor.exe once [--dry-run]      one pass over every cache in config.json, then exit
 //   CacheJanitor.exe trim <path> <maxSize> [--unit File|TopLevelEntry] [--trim-to 90] [--min-age 10] [--dry-run]
 //                                          one pass over a single folder without any config file
 
@@ -15,13 +15,15 @@ var mode = args.FirstOrDefault()?.ToLowerInvariant();
 
 if (mode is "-h" or "--help" or "/?" or "help")
 {
-    Console.WriteLine("""
+    Console.WriteLine($"""
         CacheJanitor - keeps cache folders under a size limit by deleting least recently used entries.
 
           CacheJanitor.exe                     run as a service (or in the foreground if started by hand)
-          CacheJanitor.exe once [--dry-run]    trim every cache in appsettings.json once and exit
+          CacheJanitor.exe once [--dry-run]    trim every cache in config.json once and exit
           CacheJanitor.exe trim <path> <maxSize> [--unit File|TopLevelEntry] [--trim-to 90] [--min-age 10] [--dry-run]
                                                trim one folder once, no config needed
+
+        Configuration: {AppPaths.ConfigPath}
         """);
     return 0;
 }
@@ -33,16 +35,25 @@ if (mode is "once" or "trim")
 var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
     Args = args,
-    // Services start in C:\Windows\System32, so read config from next to the exe.
+    // Services start in C:\Windows\System32, so read appsettings.json from next to the exe.
     ContentRootPath = AppContext.BaseDirectory,
 });
-builder.Services.AddWindowsService(o => o.ServiceName = "CacheJanitor");
-builder.Services.Configure<JanitorOptions>(builder.Configuration.GetSection("Janitor"));
-builder.Services.AddHostedService<Worker>();
+
+using (var bootLoggers = LoggerFactory.Create(b => b.AddConsole()))
+    DataDirectory.EnsureSecured(bootLoggers.CreateLogger("CacheJanitor"));
+
+builder.Configuration.AddJsonFile(AppPaths.ConfigPath, optional: true, reloadOnChange: true);
+builder.Services.AddWindowsService(o => o.ServiceName = AppPaths.ServiceName);
+builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(20));
+builder.Services.Configure<JanitorOptions>(builder.Configuration.GetSection(ConfigFile.SectionName));
+builder.Services.AddSingleton<StatsStore>();
+builder.Services.AddSingleton<Worker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Worker>());
+builder.Services.AddHostedService<PipeServer>();
 // When running as a service, AddWindowsService also logs to the Windows Event Log (Application, source "CacheJanitor").
 
 await builder.Build().RunAsync();
-return 0;
+return Environment.ExitCode;
 
 static async Task<int> RunOnceAsync(string mode, string[] rest)
 {
@@ -55,9 +66,9 @@ static async Task<int> RunOnceAsync(string mode, string[] rest)
     List<CacheFolderOptions> caches;
     try
     {
-        caches = mode == "trim" ? [ParseTrimArgs(rest)] : LoadConfig().Caches;
+        caches = mode == "trim" ? [ParseTrimArgs(rest)] : ConfigFile.Load(AppPaths.ConfigPath).Caches;
     }
-    catch (Exception ex) when (ex is FormatException or ArgumentException)
+    catch (Exception ex) when (ex is FormatException or ArgumentException or System.Text.Json.JsonException)
     {
         log.LogError("{Message}", ex.Message);
         return 2;
@@ -65,7 +76,7 @@ static async Task<int> RunOnceAsync(string mode, string[] rest)
 
     if (caches.Count == 0)
     {
-        log.LogError("No caches configured.");
+        log.LogError("No caches configured in {Config}.", AppPaths.ConfigPath);
         return 2;
     }
 
@@ -74,6 +85,12 @@ static async Task<int> RunOnceAsync(string mode, string[] rest)
     int exit = 0;
     foreach (var c in caches)
     {
+        if (PathGuard.Check(c.Path) is { } problem)
+        {
+            log.LogError("{Path}: {Problem}", c.Path, problem);
+            exit = 2;
+            continue;
+        }
         try
         {
             var r = await new CacheTrimmer(c, log, dryRun).TrimAsync();
@@ -87,17 +104,6 @@ static async Task<int> RunOnceAsync(string mode, string[] rest)
         }
     }
     return exit;
-}
-
-static JanitorOptions LoadConfig()
-{
-    var config = new ConfigurationBuilder()
-        .SetBasePath(AppContext.BaseDirectory)
-        .AddJsonFile("appsettings.json", optional: true)
-        .Build();
-    var options = new JanitorOptions();
-    config.GetSection("Janitor").Bind(options);
-    return options;
 }
 
 static CacheFolderOptions ParseTrimArgs(string[] a)
